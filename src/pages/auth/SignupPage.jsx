@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../../context/AuthContext'
+import { supabase } from '../../config/supabaseClient'
 
 const roles = [
   { value: 'student', label: 'Student', description: 'Access grades, schedule, and assignments' },
@@ -19,7 +19,6 @@ const SignupPage = () => {
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  const { signUp } = useAuth()
   const navigate = useNavigate()
 
   const handleChange = (e) => {
@@ -39,34 +38,42 @@ const SignupPage = () => {
       return
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters')
+    if (formData.password.length < 4) {
+      setError('Password must be at least 4 characters')
       return
     }
 
     setLoading(true)
 
-    const { data, error: signUpError } = await signUp(
-      formData.email,
-      formData.password,
-      formData.fullName,
-      formData.role
-    )
+    try {
+      // Use RPC function for signup (no email confirmation needed)
+      const { data, error: rpcError } = await supabase.rpc('public_signup', {
+        user_email: formData.email,
+        user_password: formData.password,
+        user_full_name: formData.fullName,
+        user_role: formData.role
+      })
 
-    if (signUpError) {
-      setError(signUpError.message || 'Failed to sign up')
-      setLoading(false)
-      return
-    }
-
-    // Success - user will need to verify email if enabled
-    setLoading(false)
-    navigate('/login', {
-      state: {
-        message: 'Account created successfully! Please sign in.',
-        email: formData.email
+      if (rpcError) {
+        throw new Error(rpcError.message)
       }
-    })
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create account')
+      }
+
+      // Success - redirect to login
+      navigate('/login', {
+        state: {
+          message: 'Account created successfully! Please sign in.',
+          email: formData.email
+        }
+      })
+    } catch (err) {
+      setError(err.message || 'Failed to create account')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -132,13 +139,14 @@ const SignupPage = () => {
               <input
                 id="password"
                 name="password"
-                type="password"
+                type="text"
                 value={formData.password}
                 onChange={handleChange}
                 required
                 className="input-field"
-                placeholder="••••••••"
+                placeholder="Minimum 4 characters"
                 autoComplete="new-password"
+                minLength={4}
               />
             </div>
 
@@ -149,12 +157,12 @@ const SignupPage = () => {
               <input
                 id="confirmPassword"
                 name="confirmPassword"
-                type="password"
+                type="text"
                 value={formData.confirmPassword}
                 onChange={handleChange}
                 required
                 className="input-field"
-                placeholder="••••••••"
+                placeholder="Re-enter password"
                 autoComplete="new-password"
               />
             </div>
@@ -207,6 +215,10 @@ const SignupPage = () => {
             </p>
           </div>
         </div>
+
+        <p className="text-xs text-center text-gray-500 dark:text-gray-400 mt-4">
+          No email confirmation required - account ready to use immediately
+        </p>
       </div>
     </div>
   )
