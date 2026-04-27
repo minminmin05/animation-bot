@@ -4,7 +4,7 @@ import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../context/AuthContext'
 
 const UserManagement = () => {
-  const { user: currentUser, userRole } = useAuth()
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
@@ -21,6 +21,7 @@ const UserManagement = () => {
     role: 'student'
   })
   const [formError, setFormError] = useState('')
+  const [formSuccess, setFormSuccess] = useState('')
 
   useEffect(() => {
     fetchUsers()
@@ -28,11 +29,9 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      // Use RPC function to get all users (admin only)
       const { data, error } = await supabase.rpc('admin_get_all_users')
 
       if (error) {
-        // If RPC fails (non-admin), fallback to regular query
         const { data: regularData, error: regularError } = await supabase
           .from('users')
           .select('*')
@@ -53,6 +52,7 @@ const UserManagement = () => {
   const handleAddUser = async (e) => {
     e.preventDefault()
     setFormError('')
+    setFormSuccess('')
     setSubmitting(true)
 
     if (!formData.email || !formData.password || !formData.fullName) {
@@ -61,69 +61,19 @@ const UserManagement = () => {
       return
     }
 
-    if (formData.password.length < 6) {
-      setFormError('Password must be at least 6 characters')
+    if (formData.password.length < 4) {
+      setFormError('Password must be at least 4 characters')
       setSubmitting(false)
       return
     }
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            role: formData.role
-          }
-        }
-      })
-
-      if (authError) {
-        if (authError.message.includes('already registered')) {
-          setFormError('A user with this email already exists')
-        } else {
-          setFormError(authError.message)
-        }
-        setSubmitting(false)
-        return
-      }
-
-      if (authData.user) {
-        const { error: insertError } = await supabase
-          .from('users')
-          .insert({
-            id: authData.user.id,
-            email: formData.email,
-            role: formData.role,
-            full_name: formData.fullName
-          })
-
-        if (insertError) {
-          console.error('Error creating user record:', insertError)
-        }
-      }
-
-      await fetchUsers()
-      setShowModal(false)
-      setFormData({ email: '', password: '', fullName: '', role: 'student' })
-      setFormError('')
-    } catch (error) {
-      console.error('Error adding user:', error)
-      setFormError('Failed to create user. Please try again.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
-
-  const handleRoleChange = async (userId, newRole) => {
-    setActionLoading(prev => ({ ...prev, [userId]: true }))
-
-    try {
-      // Use RPC function for admin role changes
-      const { data, error } = await supabase.rpc('admin_update_role', {
-        user_id_to_update: userId,
-        new_role: newRole
+      // Use RPC function to create user without email confirmation
+      const { data, error } = await supabase.rpc('admin_create_user', {
+        user_email: formData.email,
+        user_password: formData.password,
+        user_full_name: formData.fullName,
+        user_role: formData.role
       })
 
       if (error) {
@@ -131,14 +81,50 @@ const UserManagement = () => {
       }
 
       if (!data?.success) {
-        throw new Error(data?.error || 'Failed to update role')
+        throw new Error(data?.error || 'Failed to create user')
       }
+
+      setFormSuccess('User created successfully!')
+
+      // Refresh users list
+      await fetchUsers()
+
+      // Close modal after short delay
+      setTimeout(() => {
+        setShowModal(false)
+        resetForm()
+      }, 1500)
+
+    } catch (error) {
+      console.error('Error adding user:', error)
+      setFormError(error.message || 'Failed to create user. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const resetForm = () => {
+    setFormData({ email: '', password: '', fullName: '', role: 'student' })
+    setFormError('')
+    setFormSuccess('')
+  }
+
+  const handleRoleChange = async (userId, newRole) => {
+    setActionLoading(prev => ({ ...prev, [userId]: true }))
+
+    try {
+      const { data, error } = await supabase.rpc('admin_update_role', {
+        user_id_to_update: userId,
+        new_role: newRole
+      })
+
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.error || 'Failed to update role')
 
       setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u))
     } catch (error) {
       console.error('Error updating role:', error)
       alert(error.message || 'Failed to update role')
-      // Refresh to get current state
       fetchUsers()
     } finally {
       setActionLoading(prev => ({ ...prev, [userId]: false }))
@@ -151,18 +137,12 @@ const UserManagement = () => {
     setActionLoading(prev => ({ ...prev, [userId]: true }))
 
     try {
-      // Use RPC function for admin delete
       const { data, error } = await supabase.rpc('admin_delete_user', {
         user_id_to_delete: userId
       })
 
-      if (error) {
-        throw error
-      }
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to delete user')
-      }
+      if (error) throw error
+      if (!data?.success) throw new Error(data?.error || 'Failed to delete user')
 
       setUsers(users.filter(u => u.id !== userId))
     } catch (error) {
@@ -337,8 +317,7 @@ const UserManagement = () => {
               <button
                 onClick={() => {
                   setShowModal(false)
-                  setFormError('')
-                  setFormData({ email: '', password: '', fullName: '', role: 'student' })
+                  resetForm()
                 }}
                 className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
@@ -352,6 +331,12 @@ const UserManagement = () => {
               {formError && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                   <p className="text-red-600 dark:text-red-400 text-sm">{formError}</p>
+                </div>
+              )}
+
+              {formSuccess && (
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="text-green-600 dark:text-green-400 text-sm">{formSuccess}</p>
                 </div>
               )}
 
@@ -378,7 +363,7 @@ const UserManagement = () => {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="input-field"
-                  placeholder="user@example.com"
+                  placeholder="user@example.com (can be fake for testing)"
                   required
                 />
               </div>
@@ -388,12 +373,12 @@ const UserManagement = () => {
                   Password *
                 </label>
                 <input
-                  type="password"
+                  type="text"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="input-field"
-                  placeholder="Minimum 6 characters"
-                  minLength={6}
+                  placeholder="Any password (min 4 characters)"
+                  minLength={4}
                   required
                 />
               </div>
@@ -420,8 +405,7 @@ const UserManagement = () => {
                   type="button"
                   onClick={() => {
                     setShowModal(false)
-                    setFormError('')
-                    setFormData({ email: '', password: '', fullName: '', role: 'student' })
+                    resetForm()
                   }}
                   className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                 >
@@ -435,6 +419,10 @@ const UserManagement = () => {
                   {submitting ? 'Creating...' : 'Create User'}
                 </button>
               </div>
+
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                No email confirmation required - User can login immediately
+              </p>
             </form>
           </div>
         </div>
