@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Search, Pencil, Trash2, Mail, Phone, GraduationCap, Users, AlertCircle, LogIn } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Mail, Phone, GraduationCap, Users, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -559,8 +559,7 @@ const TeacherManagement = () => {
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
-  const [authError, setAuthError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [departmentFilter, setDepartmentFilter] = useState<string>('all')
   const [subjectFilter, setSubjectFilter] = useState<string>('all')
@@ -579,32 +578,11 @@ const TeacherManagement = () => {
 
   const fetchTeachers = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      // First, check if user is authenticated
-      const { data: { session }, error: sessionError } = await centralSupabase.auth.getSession()
+      console.log('Fetching teachers from database...')
 
-      if (sessionError) {
-        console.error('Session error:', sessionError)
-        throw new Error('Authentication error: ' + sessionError.message)
-      }
-
-      if (!session) {
-        console.warn('No active session found. User may not be logged in.')
-        setIsAuthenticated(false)
-        setAuthError('You must be logged in to view teachers.')
-        // Don't throw - allow showing empty state with login prompt
-        setTeachers([])
-        setFilteredTeachers([])
-        setLoading(false)
-        return
-      }
-
-      setIsAuthenticated(true)
-      setAuthError(null)
-
-      console.log('Fetching teachers for user:', session.user.id, 'Role:', session.user?.user_metadata?.role)
-
-      // Use LEFT JOIN instead of !inner to include teachers even if users record is missing
+      // Fetch teachers with user data
       const { data, error } = await centralSupabase
         .from('teachers')
         .select(`
@@ -628,20 +606,14 @@ const TeacherManagement = () => {
 
       if (error) {
         console.error('Supabase query error:', error)
-        console.error('Error details:', { message: error.message, code: error.code, hint: error.hint, details: error.details })
         throw error
       }
 
       console.log('Raw teacher data from Supabase:', data)
 
-      // Filter out teachers without users and add class counts
-      const validTeachers = (data || []).filter((teacher: any) => teacher.users !== null)
-
-      console.log('Valid teachers (with users):', validTeachers.length)
-
-      // Fetch class counts for each teacher
+      // Process teachers and add class counts
       const teachersWithCounts = await Promise.all(
-        validTeachers.map(async (teacher: any) => {
+        (data || []).map(async (teacher: any) => {
           const { count } = await centralSupabase
             .from('classes')
             .select('*', { count: 'exact', head: true })
@@ -662,7 +634,7 @@ const TeacherManagement = () => {
       setFilteredTeachers(teachersWithCounts)
     } catch (error: any) {
       console.error('Error fetching teachers:', error)
-      console.error('Error stack:', error.stack)
+      setError(error.message || 'Failed to load teachers')
       toast({
         variant: 'destructive',
         title: 'Error Loading Teachers',
@@ -676,15 +648,6 @@ const TeacherManagement = () => {
   useEffect(() => {
     fetchTeachers()
   }, [fetchTeachers])
-
-  // Initialize auth state on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { session } } = await centralSupabase.auth.getSession()
-      setIsAuthenticated(!!session)
-    }
-    checkAuth()
-  }, [])
 
   // ========================================
   // FILTERING
@@ -894,37 +857,21 @@ const TeacherManagement = () => {
       {/* Development Debug Component - Uncomment to enable */}
       {/* {import.meta.env.DEV && <TeacherManagementDebug />} */}
 
-      {/* Auth Error State */}
-      {isAuthenticated === false && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-6">
+      {/* Error State */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6">
           <div className="flex items-start gap-4">
-            <div className="p-2 bg-amber-100 dark:bg-amber-900/40 rounded-lg">
-              <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+            <div className="p-2 bg-red-100 dark:bg-red-900/40 rounded-lg">
+              <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
             </div>
             <div className="flex-1">
-              <h3 className="font-semibold text-amber-800 dark:text-amber-400">Authentication Required</h3>
-              <p className="text-amber-700 dark:text-amber-500 mt-1">
-                You must be logged in as an administrator to view and manage teachers.
-              </p>
-              <div className="mt-4 flex gap-3">
-                <Button onClick={() => window.location.href = '/login'} className="bg-amber-600 hover:bg-amber-700">
-                  <LogIn className="w-4 h-4 mr-2" />
-                  Go to Login
-                </Button>
+              <h3 className="font-semibold text-red-800 dark:text-red-400">Error Loading Teachers</h3>
+              <p className="text-red-700 dark:text-red-500 mt-1">{error}</p>
+              <div className="mt-4">
                 <Button variant="outline" onClick={fetchTeachers}>
-                  Retry Connection
+                  Retry
                 </Button>
               </div>
-              {authError && (
-                <details className="mt-3">
-                  <summary className="text-xs text-amber-600 cursor-pointer hover:text-amber-800">
-                    View technical details
-                  </summary>
-                  <pre className="text-xs bg-amber-100 dark:bg-amber-900/40 p-2 rounded mt-2 overflow-x-auto">
-                    {authError}
-                  </pre>
-                </details>
-              )}
             </div>
           </div>
         </div>
@@ -935,13 +882,10 @@ const TeacherManagement = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Teacher Management</h1>
           <p className="text-gray-500 dark:text-gray-400">
-            {isAuthenticated === false
-              ? 'Authentication required'
-              : `${filteredTeachers.length} teacher${filteredTeachers.length !== 1 ? 's' : ''} in the system`
-            }
+            {loading ? 'Loading...' : `${filteredTeachers.length} teacher${filteredTeachers.length !== 1 ? 's' : ''} in the system`}
           </p>
         </div>
-        <Button onClick={openAddDialog} disabled={isAuthenticated === false}>
+        <Button onClick={openAddDialog}>
           <Plus className="w-4 h-4 mr-2" />
           Add Teacher
         </Button>
