@@ -55,6 +55,11 @@ const UserManagement = () => {
     setFormSuccess('')
     setSubmitting(true)
 
+    console.log('=== SUBMIT START ===')
+    console.log('Current user:', currentUser)
+    console.log('User ID:', currentUser?.id)
+    console.log('Form data:', formData)
+
     if (!formData.email || !formData.password || !formData.fullName) {
       setFormError('Please fill in all required fields')
       setSubmitting(false)
@@ -68,6 +73,12 @@ const UserManagement = () => {
     }
 
     try {
+      console.log('Creating user with data:', {
+        email: formData.email,
+        fullName: formData.fullName,
+        role: formData.role
+      })
+
       // Use RPC function to create user without email confirmation
       const { data, error } = await supabase.rpc('admin_create_user', {
         user_email: formData.email,
@@ -76,7 +87,10 @@ const UserManagement = () => {
         user_role: formData.role
       })
 
+      console.log('RPC response:', { data, error })
+
       if (error) {
+        console.error('RPC Error:', error)
         throw error
       }
 
@@ -96,7 +110,12 @@ const UserManagement = () => {
       }, 1500)
 
     } catch (error) {
-      console.error('Error adding user:', error)
+      console.error('=== ERROR ===')
+      console.error('Error object:', error)
+      console.error('Error message:', error.message)
+      console.error('Error details:', error.details)
+      console.error('Error hint:', error.hint)
+      console.error('Full error:', JSON.stringify(error, null, 2))
       setFormError(error.message || 'Failed to create user. Please try again.')
     } finally {
       setSubmitting(false)

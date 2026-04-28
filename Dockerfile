@@ -1,36 +1,37 @@
-# Dockerfile for School Management App
-
-# Build stage
-FROM node:20-alpine AS builder
-
+# ---- 1. install dependencies ----
+FROM node:22-alpine AS deps
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies
+COPY package.json package-lock.json ./
 RUN npm ci
 
-# Copy source code
+# ---- 2. build app ----
+FROM node:22-alpine AS builder
+WORKDIR /app
+
+ARG NEXT_PUBLIC_SUPABASE_URL
+ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
+ENV NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the application
 RUN npm run build
 
-# Production stage
-FROM nginx:alpine
+# ---- 3. run app ----
+FROM node:22-alpine AS runner
+WORKDIR /app
 
-# Copy built files from builder
-COPY --from=builder /app/dist /usr/share/nginx/html
+ENV NODE_ENV=production
 
-# Copy nginx configuration
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY package.json package-lock.json ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/next.config.* ./
 
-# Expose port
-EXPOSE 80
+EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
-
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "run", "start"]
