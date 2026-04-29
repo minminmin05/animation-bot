@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../config/supabaseClient'
 import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../context/AuthContext'
-import { Plus, Search, UserCheck, UserX, Mail, ShieldGraduationCap, Users as UsersIcon, AlertCircle } from 'lucide-react'
+import { Plus, Search, UserCheck, UserX, Mail, Shield, Users as UsersIcon, AlertCircle } from 'lucide-react'
 
 const UserManagement = () => {
   const { user: currentUser } = useAuth()
@@ -58,13 +58,17 @@ const UserManagement = () => {
     setDuplicateInfo(null)
     setSubmitting(true)
 
-    if (!formData.email || !formData.password || !formData.fullName) {
+    const trimmedEmail = formData.email.trim()
+    const trimmedName = formData.fullName.trim()
+    const trimmedPassword = formData.password.trim()
+
+    if (!trimmedEmail || !trimmedPassword || !trimmedName) {
       setFormError('Please fill in all required fields')
       setSubmitting(false)
       return
     }
 
-    if (formData.password.length < 4) {
+    if (trimmedPassword.length < 4) {
       setFormError('Password must be at least 4 characters')
       setSubmitting(false)
       return
@@ -72,40 +76,28 @@ const UserManagement = () => {
 
     try {
       const { data, error } = await supabase.rpc('admin_create_user', {
-        user_email: formData.email,
-        user_password: formData.password,
-        user_full_name: formData.fullName,
+        user_email: trimmedEmail,
+        user_password: trimmedPassword,
+        user_full_name: trimmedName,
         user_role: formData.role
       })
 
       if (error) throw error
 
-      if (!data?.success) {
-        // Check if this is a duplicate error
-        if (data?.duplicates) {
-          setDuplicateInfo(data.duplicates)
-          const errors = []
-          if (data.has_email_duplicate) {
-            errors.push('Email already exists')
-          }
-          if (data.has_name_duplicate) {
-            errors.push('Name already exists')
-          }
-          setFormError(errors.join(' and '))
-        } else {
-          throw new Error(data?.error || 'Failed to create user')
-        }
-      } else {
+      if (data?.success) {
         setFormSuccess('User created successfully!')
         await fetchUsers()
         setTimeout(() => {
           setShowModal(false)
           resetForm()
         }, 1500)
+      } else {
+        setFormError(data?.error || 'Failed to create user')
       }
+
     } catch (error) {
-      console.error('Error creating user:', error)
-      setFormError(error.message || 'Failed to create user. Please try again.')
+      console.error('Error:', error)
+      setFormError(error.message || 'Failed to create user')
     } finally {
       setSubmitting(false)
     }
@@ -183,7 +175,7 @@ const UserManagement = () => {
 
   const getRoleIcon = (role) => {
     switch (role) {
-      case 'admin': return <ShieldGraduationCap className="w-4 h-4" />
+      case 'admin': return <Shield className="w-4 h-4" />
       case 'teacher': return <UserCheck className="w-4 h-4" />
       case 'student': return <UsersIcon className="w-4 h-4" />
       case 'parent': return <UserX className="w-4 h-4" />
@@ -243,7 +235,7 @@ const UserManagement = () => {
         </div>
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
           <div className="flex items-center justify-center gap-2 text-red-600 dark:text-red-400 mb-1">
-            <ShieldGraduationCap className="w-5 h-5" />
+            <Shield className="w-5 h-5" />
             <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'admin').length}</p>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">Admins</p>
@@ -402,11 +394,30 @@ const UserManagement = () => {
               {/* Duplicate Info Display */}
               {duplicateInfo && (
                 <div className="space-y-3">
+                  {duplicateInfo.orphaned_auth && duplicateInfo.orphaned_auth.length > 0 && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <p className="text-red-800 dark:text-red-400 text-sm font-medium mb-2">
+                        <AlertCircle className="w-4 h-4 inline mr-1" />
+                        Email exists in deleted accounts (orphaned):
+                      </p>
+                      <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
+                        {duplicateInfo.orphaned_auth.map(dup => (
+                          <li key={dup.id}>
+                            • {dup.email} - created at {new Date(dup.created_at).toLocaleDateString()}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                        Run cleanup in Supabase SQL Editor to free this email.
+                      </p>
+                    </div>
+                  )}
+
                   {duplicateInfo.email && duplicateInfo.email.length > 0 && (
                     <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
                       <p className="text-amber-800 dark:text-amber-400 text-sm font-medium mb-2">
                         <Mail className="w-4 h-4 inline mr-1" />
-                        Email already exists:
+                        Email already exists in system:
                       </p>
                       <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
                         {duplicateInfo.email.map(dup => (
@@ -444,6 +455,7 @@ const UserManagement = () => {
                   type="text"
                   value={formData.fullName}
                   onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  onBlur={(e) => setFormData({ ...formData, fullName: e.target.value.trim() })}
                   className="input-field"
                   placeholder="Enter full name"
                   required
@@ -455,13 +467,17 @@ const UserManagement = () => {
                   Email Address *
                 </label>
                 <input
-                  type="email"
+                  type="text"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onBlur={(e) => setFormData({ ...formData, email: e.target.value.trim() })}
                   className="input-field"
-                  placeholder="user@example.com"
+                  placeholder="test@gmail.com, user@test.com, etc."
                   required
                 />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Test mode - any email format works (e.g., test@anything.com)
+                </p>
               </div>
 
               <div>
