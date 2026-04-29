@@ -13,11 +13,12 @@ import StudentDashboard from './pages/student/StudentDashboard'
 import StudentGrades from './pages/student/StudentGrades'
 import StudentSchedule from './pages/student/StudentSchedule'
 import StudentProfile from './pages/student/StudentProfile'
+import StudentReportCard from './pages/student/StudentReportCard'
 
 // Teacher Pages
 import TeacherDashboard from './pages/teacher/TeacherDashboard'
 import TeacherClasses from './pages/teacher/TeacherClasses'
-import TeacherGrades from './pages/teacher/TeacherGrades'
+import TeacherGradesNew from './pages/teacher/TeacherGradesNew'
 import TeacherAssignments from './pages/teacher/TeacherAssignments'
 import TeacherProfile from './pages/teacher/TeacherProfile'
 
@@ -34,6 +35,8 @@ import StudentManagement from './pages/admin/StudentManagement'
 import ClassManagement from './pages/admin/ClassManagement'
 import TeacherManagement from './pages/admin/TeacherManagement'
 import StudentEnrollment from './pages/admin/StudentEnrollment'
+import AcademicManagement from './pages/admin/AcademicManagement'
+import GradingManagement from './pages/admin/GradingManagement'
 
 // Central System Pages
 import CentralDashboard from './pages/central/CentralDashboard'
@@ -73,6 +76,7 @@ function App() {
             <Route path="dashboard" element={<StudentDashboard />} />
             <Route path="grades" element={<StudentGrades />} />
             <Route path="schedule" element={<StudentSchedule />} />
+            <Route path="report-card" element={<StudentReportCard />} />
             <Route path="profile" element={<StudentProfile />} />
             <Route path="" element={<Navigate to="/student/dashboard" replace />} />
           </Route>
@@ -88,7 +92,7 @@ function App() {
           >
             <Route path="dashboard" element={<TeacherDashboard />} />
             <Route path="classes" element={<TeacherClasses />} />
-            <Route path="grades" element={<TeacherGrades />} />
+            <Route path="grades" element={<TeacherGradesNew />} />
             <Route path="assignments" element={<TeacherAssignments />} />
             <Route path="profile" element={<TeacherProfile />} />
             <Route path="" element={<Navigate to="/teacher/dashboard" replace />} />
@@ -126,8 +130,8 @@ function App() {
             <Route path="classes" element={<ClassManagement />} />
             <Route path="teachers" element={<TeacherManagement />} />
             <Route path="enrollment" element={<StudentEnrollment />} />
-            <Route path="academic" element={<div className="p-6"><h1 className="text-2xl font-bold">Academic Settings - Coming Soon</h1></div>} />
-            <Route path="grading" element={<div className="p-6"><h1 className="text-2xl font-bold">Grading Settings - Coming Soon</h1></div>} />
+            <Route path="academic" element={<AcademicManagement />} />
+            <Route path="grading" element={<GradingManagement />} />
             <Route path="facilities" element={<div className="p-6"><h1 className="text-2xl font-bold">School Facilities - Coming Soon</h1></div>} />
             <Route path="links" element={<div className="p-6"><h1 className="text-2xl font-bold">System Links - Coming Soon</h1></div>} />
             <Route path="settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Admin Settings - Coming Soon</h1></div>} />

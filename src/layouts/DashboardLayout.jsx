@@ -7,7 +7,7 @@ const sidebarLinks = {
     { path: '/student/dashboard', label: 'Dashboard', icon: '🏠' },
     { path: '/student/grades', label: 'My Grades', icon: '📊' },
     { path: '/student/schedule', label: 'Schedule', icon: '📅' },
-    { path: '/student/assignments', label: 'Assignments', icon: '📝' },
+    { path: '/student/report-card', label: 'Report Card', icon: '📜' },
     { path: '/student/profile', label: 'Profile', icon: '👤' }
   ],
   teacher: [

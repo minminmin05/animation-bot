@@ -24,8 +24,13 @@ const StudentEnrollment = () => {
       const [classesResult, studentsResult, enrollmentsResult] = await Promise.all([
         supabase.rpc('admin_get_classes_with_teachers'),
         supabase.rpc('admin_get_students_with_users'),
-        supabase.from('student_enrollments').select('*')
+        supabase.rpc('admin_get_all_enrollments')
       ])
+
+      console.log('=== Data Fetch Results ===')
+      console.log('Classes:', classesResult.data?.length || 0)
+      console.log('Students:', studentsResult.data?.length || 0)
+      console.log('Enrollments:', enrollmentsResult.data?.length || 0)
 
       if (classesResult.data) {
         setClasses(classesResult.data)
@@ -34,8 +39,13 @@ const StudentEnrollment = () => {
         setStudents(studentsResult.data)
       }
       if (enrollmentsResult.data) {
+        console.log('Enrollment data:', enrollmentsResult.data)
         setEnrollments(enrollmentsResult.data)
       }
+
+      // Debug: check enrollment counts
+      const { data: debugData } = await supabase.rpc('debug_enrollment_counts')
+      console.log('=== Enrollment Counts by Class ===', debugData)
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -47,7 +57,15 @@ const StudentEnrollment = () => {
     const enrollmentIds = enrollments
       .filter(e => e.class_id === classId && e.status === 'active')
       .map(e => e.student_id)
-    return students.filter(s => enrollmentIds.includes(s.id))
+
+    console.log(`=== getEnrolledStudents for class ${classId} ===`)
+    console.log('Active enrollment IDs:', enrollmentIds)
+    console.log('Students available:', students.length)
+
+    const enrolled = students.filter(s => enrollmentIds.includes(s.id))
+    console.log('Enrolled students found:', enrolled.length)
+
+    return enrolled
   }
 
   const getAvailableStudents = (classId) => {
@@ -63,6 +81,10 @@ const StudentEnrollment = () => {
 
     setSubmitting(true)
     try {
+      console.log('=== Enrolling Students ===')
+      console.log('Class ID:', selectedClass.id)
+      console.log('Student IDs:', studentIds)
+
       const { data, error } = await supabase.rpc('admin_enroll_students', {
         p_class_id: selectedClass.id,
         p_student_ids: studentIds
@@ -70,11 +92,23 @@ const StudentEnrollment = () => {
 
       if (error) throw error
 
+      console.log('Enrollment result:', data)
+
       if (!data?.success) {
         throw new Error(data?.error || 'Failed to enroll students')
       }
 
+      // Small delay to ensure data is committed
+      await new Promise(resolve => setTimeout(resolve, 500))
+
       await fetchData()
+
+      // Log the updated enrollment count
+      setTimeout(() => {
+        const enrolled = getEnrolledStudents(selectedClass.id)
+        console.log(`After refresh: ${enrolled.length} students enrolled`)
+      }, 100)
+
       setShowAddModal(false)
     } catch (error) {
       console.error('Error adding students:', error)
