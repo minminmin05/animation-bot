@@ -19,6 +19,7 @@ import {
   LogOut,
   UserPlus,
   Link,
+  Users as UserGroup,
 } from 'lucide-react'
 
 const navigationItems = [
@@ -44,6 +45,12 @@ const navigationItems = [
     title: 'Class Management',
     url: '/admin/classes',
     icon: School,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'Student Enrollment',
+    url: '/admin/enrollment',
+    icon: UserGroup,
     roles: ['admin', 'owner'],
   },
   {

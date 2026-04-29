@@ -33,6 +33,7 @@ import UserManagement from './pages/admin/UserManagement'
 import StudentManagement from './pages/admin/StudentManagement'
 import ClassManagement from './pages/admin/ClassManagement'
 import TeacherManagement from './pages/admin/TeacherManagement'
+import StudentEnrollment from './pages/admin/StudentEnrollment'
 
 // Central System Pages
 import CentralDashboard from './pages/central/CentralDashboard'
@@ -124,6 +125,7 @@ function App() {
             <Route path="students" element={<StudentManagement />} />
             <Route path="classes" element={<ClassManagement />} />
             <Route path="teachers" element={<TeacherManagement />} />
+            <Route path="enrollment" element={<StudentEnrollment />} />
             <Route path="academic" element={<div className="p-6"><h1 className="text-2xl font-bold">Academic Settings - Coming Soon</h1></div>} />
             <Route path="grading" element={<div className="p-6"><h1 className="text-2xl font-bold">Grading Settings - Coming Soon</h1></div>} />
             <Route path="facilities" element={<div className="p-6"><h1 className="text-2xl font-bold">School Facilities - Coming Soon</h1></div>} />

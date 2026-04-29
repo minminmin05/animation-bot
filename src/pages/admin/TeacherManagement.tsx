@@ -589,27 +589,9 @@ const TeacherManagement = () => {
     try {
       console.log('Fetching teachers from database...')
 
-      // Fetch teachers with user data
+      // Use RPC function to bypass RLS issues with users table join
       const { data, error } = await centralSupabase
-        .from('teachers')
-        .select(`
-          id,
-          user_id,
-          name,
-          subject,
-          department,
-          employee_id,
-          phone,
-          qualifications,
-          hire_date,
-          created_at,
-          users (
-            email,
-            role,
-            full_name
-          )
-        `)
-        .order('created_at', { ascending: false })
+        .rpc('admin_get_teachers_with_emails')
 
       if (error) {
         console.error('Supabase query error:', error)
@@ -628,8 +610,8 @@ const TeacherManagement = () => {
 
           return {
             ...teacher,
-            email: teacher.users?.email || 'No email',
-            full_name: teacher.users?.full_name || teacher.name,
+            email: teacher.email || 'No email',
+            full_name: teacher.full_name || teacher.name,
             class_count: count || 0
           }
         })

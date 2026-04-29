@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../config/supabaseClient'
 import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../context/AuthContext'
-import { Plus, Search, UserCheck, UserX, Mail, Shield, Users as UsersIcon, AlertCircle } from 'lucide-react'
+import { Plus, Search, UserCheck, UserX, Shield, Users as UsersIcon, AlertCircle } from 'lucide-react'
 
 const UserManagement = () => {
   const { user: currentUser } = useAuth()
@@ -23,7 +23,6 @@ const UserManagement = () => {
   })
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
-  const [duplicateInfo, setDuplicateInfo] = useState(null)
 
   useEffect(() => {
     fetchUsers()
@@ -55,7 +54,6 @@ const UserManagement = () => {
     e.preventDefault()
     setFormError('')
     setFormSuccess('')
-    setDuplicateInfo(null)
     setSubmitting(true)
 
     const trimmedEmail = formData.email.trim()
@@ -92,7 +90,13 @@ const UserManagement = () => {
           resetForm()
         }, 1500)
       } else {
-        setFormError(data?.error || 'Failed to create user')
+        // Check if error is about duplicate user
+        const errorMsg = data?.error || 'Failed to create user'
+        if (errorMsg.includes('already exists')) {
+          setFormError('User already left - this email or name is already in use')
+        } else {
+          setFormError(errorMsg)
+        }
       }
 
     } catch (error) {
@@ -107,7 +111,6 @@ const UserManagement = () => {
     setFormData({ email: '', password: '', fullName: '', role: 'student' })
     setFormError('')
     setFormSuccess('')
-    setDuplicateInfo(null)
   }
 
   const handleRoleChange = async (userId, newRole) => {
@@ -388,62 +391,6 @@ const UserManagement = () => {
               {formSuccess && (
                 <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                   <p className="text-green-600 dark:text-green-400 text-sm">{formSuccess}</p>
-                </div>
-              )}
-
-              {/* Duplicate Info Display */}
-              {duplicateInfo && (
-                <div className="space-y-3">
-                  {duplicateInfo.orphaned_auth && duplicateInfo.orphaned_auth.length > 0 && (
-                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <p className="text-red-800 dark:text-red-400 text-sm font-medium mb-2">
-                        <AlertCircle className="w-4 h-4 inline mr-1" />
-                        Email exists in deleted accounts (orphaned):
-                      </p>
-                      <ul className="text-xs text-red-700 dark:text-red-300 space-y-1">
-                        {duplicateInfo.orphaned_auth.map(dup => (
-                          <li key={dup.id}>
-                            • {dup.email} - created at {new Date(dup.created_at).toLocaleDateString()}
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-2">
-                        Run cleanup in Supabase SQL Editor to free this email.
-                      </p>
-                    </div>
-                  )}
-
-                  {duplicateInfo.email && duplicateInfo.email.length > 0 && (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                      <p className="text-amber-800 dark:text-amber-400 text-sm font-medium mb-2">
-                        <Mail className="w-4 h-4 inline mr-1" />
-                        Email already exists in system:
-                      </p>
-                      <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
-                        {duplicateInfo.email.map(dup => (
-                          <li key={dup.id}>
-                            • {dup.full_name} ({dup.email}) - {dup.role}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {duplicateInfo.name && duplicateInfo.name.length > 0 && (
-                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                      <p className="text-amber-800 dark:text-amber-400 text-sm font-medium mb-2">
-                        <UsersIcon className="w-4 h-4 inline mr-1" />
-                        Name already exists:
-                      </p>
-                      <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
-                        {duplicateInfo.name.map(dup => (
-                          <li key={dup.id}>
-                            • {dup.full_name} ({dup.email}) - {dup.role}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
                 </div>
               )}
 

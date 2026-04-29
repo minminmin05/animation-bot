@@ -24,13 +24,29 @@ const ClassManagement = () => {
 
   const fetchData = async () => {
     try {
-      const [classesData, teachersData] = await Promise.all([
-        supabase.from('classes').select('*, teachers (name)').order('name'),
-        supabase.from('teachers').select('*, users (email)')
+      const [classesResult, teachersResult] = await Promise.all([
+        supabase.rpc('admin_get_classes_with_teachers'),
+        supabase.from('teachers').select('*')
       ])
 
-      if (classesData.data) setClasses(classesData.data)
-      if (teachersData.data) setTeachers(teachersData.data)
+      if (classesResult.error) {
+        console.error('Error fetching classes:', classesResult.error)
+      } else if (classesResult.data) {
+        // Transform data to match expected format with teachers object
+        const classesWithTeacher = classesResult.data.map(cls => ({
+          ...cls,
+          teachers: { name: cls.teacher_name }
+        }))
+        setClasses(classesWithTeacher)
+        console.log('Classes loaded:', classesWithTeacher.length)
+      }
+
+      if (teachersResult.error) {
+        console.error('Error fetching teachers:', teachersResult.error)
+      } else if (teachersResult.data) {
+        setTeachers(teachersResult.data)
+        console.log('Teachers loaded:', teachersResult.data.length)
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -41,14 +57,33 @@ const ClassManagement = () => {
   const handleSubmit = async (e) => {
     e.preventDefault()
 
+    // Validate teacher_id is selected
+    if (!formData.teacher_id) {
+      alert('Please select a teacher')
+      return
+    }
+
+    // Convert grade_level to integer
+    const classData = {
+      name: formData.name,
+      subject: formData.subject,
+      teacher_id: formData.teacher_id,
+      grade_level: parseInt(formData.grade_level, 10),
+      section: formData.section || null,
+      academic_year: formData.academic_year,
+      room_number: formData.room_number || null,
+      schedule: formData.schedule || null
+    }
+
     try {
       const { error } = await supabase
         .from('classes')
-        .insert(formData)
+        .insert(classData)
 
       if (error) throw error
 
-      fetchData()
+      // Refresh data and close modal
+      await fetchData()
       setShowModal(false)
       setFormData({
         name: '',
@@ -62,7 +97,7 @@ const ClassManagement = () => {
       })
     } catch (error) {
       console.error('Error creating class:', error)
-      alert('Failed to create class')
+      alert(`Failed to create class: ${error.message}`)
     }
   }
 
@@ -209,7 +244,7 @@ const ClassManagement = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Teacher
+                  Teacher *
                 </label>
                 <select
                   required
@@ -217,11 +252,18 @@ const ClassManagement = () => {
                   onChange={(e) => setFormData({ ...formData, teacher_id: e.target.value })}
                   className="input-field"
                 >
-                  <option value="">Select a teacher</option>
-                  {teachers.map((teacher) => (
-                    <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
-                  ))}
+                  <option value="">-- Select a teacher --</option>
+                  {teachers.length === 0 ? (
+                    <option disabled>No teachers available</option>
+                  ) : (
+                    teachers.map((teacher) => (
+                      <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+                    ))
+                  )}
                 </select>
+                {teachers.length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">Please add teachers first in User Management</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
