@@ -7,6 +7,7 @@ import CentralLayout from './layouts/CentralLayout'
 // Auth Pages
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
+import SetupPage from './pages/auth/SetupPage'
 
 // Student Pages
 import StudentDashboard from './pages/student/StudentDashboard'
@@ -63,6 +64,7 @@ function App() {
               </PublicRoute>
             }
           />
+          <Route path="/setup" element={<SetupPage />} />
 
           {/* Student Routes */}
           <Route
