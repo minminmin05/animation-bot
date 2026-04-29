@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../config/supabaseClient'
 import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../context/AuthContext'
+import { Plus, Search, UserCheck, UserX, Mail, ShieldGraduationCap, Users as UsersIcon, AlertCircle } from 'lucide-react'
 
 const UserManagement = () => {
   const { user: currentUser } = useAuth()
@@ -22,6 +23,7 @@ const UserManagement = () => {
   })
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
+  const [duplicateInfo, setDuplicateInfo] = useState(null)
 
   useEffect(() => {
     fetchUsers()
@@ -53,12 +55,8 @@ const UserManagement = () => {
     e.preventDefault()
     setFormError('')
     setFormSuccess('')
+    setDuplicateInfo(null)
     setSubmitting(true)
-
-    console.log('=== SUBMIT START ===')
-    console.log('Current user:', currentUser)
-    console.log('User ID:', currentUser?.id)
-    console.log('Form data:', formData)
 
     if (!formData.email || !formData.password || !formData.fullName) {
       setFormError('Please fill in all required fields')
@@ -73,13 +71,6 @@ const UserManagement = () => {
     }
 
     try {
-      console.log('Creating user with data:', {
-        email: formData.email,
-        fullName: formData.fullName,
-        role: formData.role
-      })
-
-      // Use RPC function to create user without email confirmation
       const { data, error } = await supabase.rpc('admin_create_user', {
         user_email: formData.email,
         user_password: formData.password,
@@ -87,35 +78,33 @@ const UserManagement = () => {
         user_role: formData.role
       })
 
-      console.log('RPC response:', { data, error })
-
-      if (error) {
-        console.error('RPC Error:', error)
-        throw error
-      }
+      if (error) throw error
 
       if (!data?.success) {
-        throw new Error(data?.error || 'Failed to create user')
+        // Check if this is a duplicate error
+        if (data?.duplicates) {
+          setDuplicateInfo(data.duplicates)
+          const errors = []
+          if (data.has_email_duplicate) {
+            errors.push('Email already exists')
+          }
+          if (data.has_name_duplicate) {
+            errors.push('Name already exists')
+          }
+          setFormError(errors.join(' and '))
+        } else {
+          throw new Error(data?.error || 'Failed to create user')
+        }
+      } else {
+        setFormSuccess('User created successfully!')
+        await fetchUsers()
+        setTimeout(() => {
+          setShowModal(false)
+          resetForm()
+        }, 1500)
       }
-
-      setFormSuccess('User created successfully!')
-
-      // Refresh users list
-      await fetchUsers()
-
-      // Close modal after short delay
-      setTimeout(() => {
-        setShowModal(false)
-        resetForm()
-      }, 1500)
-
     } catch (error) {
-      console.error('=== ERROR ===')
-      console.error('Error object:', error)
-      console.error('Error message:', error.message)
-      console.error('Error details:', error.details)
-      console.error('Error hint:', error.hint)
-      console.error('Full error:', JSON.stringify(error, null, 2))
+      console.error('Error creating user:', error)
       setFormError(error.message || 'Failed to create user. Please try again.')
     } finally {
       setSubmitting(false)
@@ -126,6 +115,7 @@ const UserManagement = () => {
     setFormData({ email: '', password: '', fullName: '', role: 'student' })
     setFormError('')
     setFormSuccess('')
+    setDuplicateInfo(null)
   }
 
   const handleRoleChange = async (userId, newRole) => {
@@ -181,6 +171,26 @@ const UserManagement = () => {
     return matchesFilter && matchesSearch
   })
 
+  const getRoleBadgeColor = (role) => {
+    switch (role) {
+      case 'admin': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+      case 'teacher': return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400'
+      case 'student': return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
+      case 'parent': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
+    }
+  }
+
+  const getRoleIcon = (role) => {
+    switch (role) {
+      case 'admin': return <ShieldGraduationCap className="w-4 h-4" />
+      case 'teacher': return <UserCheck className="w-4 h-4" />
+      case 'student': return <UsersIcon className="w-4 h-4" />
+      case 'parent': return <UserX className="w-4 h-4" />
+      default: return <UsersIcon className="w-4 h-4" />
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -190,31 +200,67 @@ const UserManagement = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">User Management</h1>
-          <p className="text-gray-500 dark:text-gray-400">Manage all system users and roles</p>
+          <p className="text-gray-500 dark:text-gray-400">
+            {loading ? 'Loading...' : `${users.length} user${users.length !== 1 ? 's' : ''} in the system`}
+          </p>
         </div>
         <button
           onClick={() => setShowModal(true)}
-          className="btn-primary"
+          className="btn-primary flex items-center gap-2"
         >
-          + Add User
+          <Plus className="w-4 h-4" />
+          Add User
         </button>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
+          <div className="flex items-center justify-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
+            <UsersIcon className="w-5 h-5" />
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'student').length}</p>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Students</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
+          <div className="flex items-center justify-center gap-2 text-purple-600 dark:text-purple-400 mb-1">
+            <UserCheck className="w-5 h-5" />
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'teacher').length}</p>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Teachers</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
+          <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400 mb-1">
+            <UserX className="w-5 h-5" />
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'parent').length}</p>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Parents</p>
+        </div>
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
+          <div className="flex items-center justify-center gap-2 text-red-600 dark:text-red-400 mb-1">
+            <ShieldGraduationCap className="w-5 h-5" />
+            <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'admin').length}</p>
+          </div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Admins</p>
+        </div>
       </div>
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
         <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               type="text"
               placeholder="Search by name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="input-field"
+              className="input-field pl-9"
             />
           </div>
           <select
@@ -232,11 +278,11 @@ const UserManagement = () => {
       </div>
 
       {/* Users Table */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700">
+              <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                 <th className="text-left p-4 font-medium text-gray-600 dark:text-gray-400">User</th>
                 <th className="text-left p-4 font-medium text-gray-600 dark:text-gray-400">Role</th>
                 <th className="text-left p-4 font-medium text-gray-600 dark:text-gray-400">Joined</th>
@@ -252,7 +298,7 @@ const UserManagement = () => {
                 </tr>
               ) : (
                 filteredUsers.map((user) => (
-                  <tr key={user.id} className="border-t border-gray-100 dark:border-gray-700">
+                  <tr key={user.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className="p-4">
                       <div className="flex items-center gap-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${
@@ -267,37 +313,48 @@ const UserManagement = () => {
                           <p className="font-medium text-gray-900 dark:text-white">
                             {user.full_name || 'Not set'}
                           </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{user.email}</p>
-                          {user.id === currentUser?.id && (
-                            <span className="text-xs text-blue-600 dark:text-blue-400">(You)</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">{user.email}</p>
+                            {user.id === currentUser?.id && (
+                              <span className="text-xs text-blue-600 dark:text-blue-400">(You)</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="p-4">
-                      <select
-                        value={user.role}
-                        onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                        disabled={actionLoading[user.id] || user.id === currentUser?.id}
-                        className="input-field py-1 px-3 text-sm w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <option value="student">Student</option>
-                        <option value="teacher">Teacher</option>
-                        <option value="parent">Parent</option>
-                        <option value="admin">Admin</option>
-                      </select>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getRoleBadgeColor(user.role)}`}>
+                        {getRoleIcon(user.role)}
+                        {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                      </span>
                     </td>
                     <td className="p-4 text-gray-600 dark:text-gray-400">
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
                     <td className="p-4 text-right">
-                      <button
-                        onClick={() => handleDeleteUser(user.id)}
-                        disabled={actionLoading[user.id] || user.id === currentUser?.id}
-                        className="text-red-600 hover:text-red-700 dark:text-red-400 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {actionLoading[user.id] ? '...' : 'Delete'}
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <select
+                          value={user.role}
+                          onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                          disabled={actionLoading[user.id] || user.id === currentUser?.id}
+                          className="input-field py-1 px-2 text-sm w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <option value="student">Student</option>
+                          <option value="teacher">Teacher</option>
+                          <option value="parent">Parent</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                        <button
+                          onClick={() => handleDeleteUser(user.id)}
+                          disabled={actionLoading[user.id] || user.id === currentUser?.id}
+                          className="text-red-600 hover:text-red-700 dark:text-red-400 text-sm disabled:opacity-50 disabled:cursor-not-allowed p-1"
+                          title="Delete user"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -307,30 +364,10 @@ const UserManagement = () => {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'student').length}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Students</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'teacher').length}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Teachers</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'parent').length}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Parents</p>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-4 border border-gray-100 dark:border-gray-700 text-center">
-          <p className="text-2xl font-bold text-gray-900 dark:text-white">{users.filter(u => u.role === 'admin').length}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Admins</p>
-        </div>
-      </div>
-
       {/* Add User Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white">Add New User</h2>
               <button
@@ -349,13 +386,53 @@ const UserManagement = () => {
             <form onSubmit={handleAddUser} className="p-6 space-y-4">
               {formError && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                  <p className="text-red-600 dark:text-red-400 text-sm">{formError}</p>
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-red-600 dark:text-red-400 text-sm">{formError}</p>
+                  </div>
                 </div>
               )}
 
               {formSuccess && (
                 <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
                   <p className="text-green-600 dark:text-green-400 text-sm">{formSuccess}</p>
+                </div>
+              )}
+
+              {/* Duplicate Info Display */}
+              {duplicateInfo && (
+                <div className="space-y-3">
+                  {duplicateInfo.email && duplicateInfo.email.length > 0 && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-amber-800 dark:text-amber-400 text-sm font-medium mb-2">
+                        <Mail className="w-4 h-4 inline mr-1" />
+                        Email already exists:
+                      </p>
+                      <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                        {duplicateInfo.email.map(dup => (
+                          <li key={dup.id}>
+                            • {dup.full_name} ({dup.email}) - {dup.role}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {duplicateInfo.name && duplicateInfo.name.length > 0 && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-amber-800 dark:text-amber-400 text-sm font-medium mb-2">
+                        <UsersIcon className="w-4 h-4 inline mr-1" />
+                        Name already exists:
+                      </p>
+                      <ul className="text-xs text-amber-700 dark:text-amber-300 space-y-1">
+                        {duplicateInfo.name.map(dup => (
+                          <li key={dup.id}>
+                            • {dup.full_name} ({dup.email}) - {dup.role}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -382,7 +459,7 @@ const UserManagement = () => {
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   className="input-field"
-                  placeholder="user@example.com (can be fake for testing)"
+                  placeholder="user@example.com"
                   required
                 />
               </div>
@@ -396,7 +473,7 @@ const UserManagement = () => {
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="input-field"
-                  placeholder="Any password (min 4 characters)"
+                  placeholder="Enter password (min 4 characters)"
                   minLength={4}
                   required
                 />

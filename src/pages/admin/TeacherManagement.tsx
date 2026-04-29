@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Search, Pencil, Trash2, Mail, Phone, GraduationCap, Users, AlertCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Search, Pencil, Trash2, Mail, Phone, GraduationCap, Users, AlertCircle, ExternalLink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -112,18 +113,25 @@ const LoadingSkeleton = () => (
   </div>
 )
 
-const EmptyState = ({ onAddTeacher }: { onAddTeacher: () => void }) => (
+interface EmptyStateProps {
+  onNavigateToUsers: () => void
+}
+
+const EmptyState = ({ onNavigateToUsers }: EmptyStateProps) => (
   <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
     <div className="w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
       <GraduationCap className="w-10 h-10 text-gray-400" />
     </div>
     <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No teachers found</h3>
-    <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-sm">
+    <p className="text-gray-500 dark:text-gray-400 mb-2 max-w-sm">
       Get started by adding your first teacher to the system.
     </p>
-    <Button onClick={onAddTeacher}>
-      <Plus className="w-4 h-4 mr-2" />
-      Add First Teacher
+    <p className="text-sm text-gray-400 dark:text-gray-500 mb-6 max-w-sm">
+      Teachers can be added from the User Management page
+    </p>
+    <Button onClick={onNavigateToUsers}>
+      <ExternalLink className="w-4 h-4 mr-2" />
+      Go to User Management
     </Button>
   </div>
 )
@@ -359,11 +367,9 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{teacher ? 'Edit Teacher' : 'Add New Teacher'}</DialogTitle>
+          <DialogTitle>Edit Teacher</DialogTitle>
           <DialogDescription>
-            {teacher
-              ? 'Update teacher information below.'
-              : 'Create a new teacher account and profile. An email invitation will be sent.'}
+            Update teacher information below.
           </DialogDescription>
         </DialogHeader>
 
@@ -487,7 +493,7 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
               Cancel
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? 'Saving...' : teacher ? 'Update Teacher' : 'Create Teacher'}
+              {submitting ? 'Saving...' : 'Update Teacher'}
             </Button>
           </DialogFooter>
         </form>
@@ -556,6 +562,7 @@ const DeleteConfirmDialog = ({ isOpen, onClose, onConfirm, teacherName, classCou
 // ========================================
 
 const TeacherManagement = () => {
+  const navigate = useNavigate()
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
@@ -684,81 +691,6 @@ const TeacherManagement = () => {
   // CRUD OPERATIONS
   // ========================================
 
-  const handleCreateTeacher = async (data: TeacherFormData) => {
-    try {
-      // Call edge function to create auth user and teacher profile
-      const { data: { user }, error: authError } = await centralSupabase.auth.signUp({
-        email: data.email,
-        password: Math.random().toString(36).slice(-12), // Temporary password
-        options: {
-          data: {
-            role: 'teacher',
-            full_name: data.name
-          }
-        }
-      })
-
-      if (authError) {
-        // User might already exist, check if they're in users table
-        const { data: existingUser } = await centralSupabase
-          .from('users')
-          .select('id')
-          .eq('email', data.email)
-          .single()
-
-        if (existingUser) {
-          // Create teacher profile for existing user
-          const { error: profileError } = await centralSupabase
-            .from('teachers')
-            .insert({
-              user_id: existingUser.id,
-              name: data.name,
-              subject: data.subject,
-              department: data.department,
-              employee_id: data.employee_id || null,
-              phone: data.phone || null,
-              qualifications: data.qualifications || null,
-              hire_date: data.hire_date
-            })
-
-          if (profileError) throw profileError
-        } else {
-          throw authError
-        }
-      } else if (user) {
-        // Create teacher profile
-        const { error: profileError } = await centralSupabase
-          .from('teachers')
-          .insert({
-            user_id: user.id,
-            name: data.name,
-            subject: data.subject,
-            department: data.department,
-            employee_id: data.employee_id || null,
-            phone: data.phone || null,
-            qualifications: data.qualifications || null,
-            hire_date: data.hire_date
-          })
-
-        if (profileError) throw profileError
-      }
-
-      toast({
-        title: 'Success',
-        description: `Teacher "${data.name}" has been created.`
-      })
-      await fetchTeachers()
-    } catch (error: any) {
-      console.error('Error creating teacher:', error)
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to create teacher. Please try again.'
-      })
-      throw error
-    }
-  }
-
   const handleUpdateTeacher = async (data: TeacherFormData) => {
     if (!selectedTeacher) return
 
@@ -828,8 +760,8 @@ const TeacherManagement = () => {
   // ========================================
 
   const openAddDialog = () => {
-    setSelectedTeacher(null)
-    setShowForm(true)
+    // Navigate to User Management page to add new teachers
+    navigate('/admin/users')
   }
 
   const openEditDialog = (teacher: Teacher) => {
@@ -889,6 +821,9 @@ const TeacherManagement = () => {
           <Plus className="w-4 h-4 mr-2" />
           Add Teacher
         </Button>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Teachers are now managed from User Management
+        </p>
       </div>
 
       {/* Filters */}
@@ -934,7 +869,7 @@ const TeacherManagement = () => {
       {loading ? (
         <LoadingSkeleton />
       ) : filteredTeachers.length === 0 ? (
-        <EmptyState onAddTeacher={openAddDialog} />
+        <EmptyState onNavigateToUsers={openAddDialog} />
       ) : (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
           <div className="overflow-x-auto">
@@ -1011,13 +946,15 @@ const TeacherManagement = () => {
         </div>
       )}
 
-      {/* Dialogs */}
-      <TeacherFormDialog
-        isOpen={showForm}
-        onClose={() => setShowForm(false)}
-        onSubmit={selectedTeacher ? handleUpdateTeacher : handleCreateTeacher}
-        teacher={selectedTeacher}
-      />
+      {/* Dialogs - Only for editing existing teachers */}
+      {selectedTeacher && (
+        <TeacherFormDialog
+          isOpen={showForm}
+          onClose={() => setShowForm(false)}
+          onSubmit={handleUpdateTeacher}
+          teacher={selectedTeacher}
+        />
+      )}
 
       <TeacherDetailDrawer
         teacher={selectedTeacher}
