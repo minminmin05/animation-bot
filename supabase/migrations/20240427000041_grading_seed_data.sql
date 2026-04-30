@@ -8,7 +8,7 @@
 INSERT INTO grading_scales (name, description, scale_type, is_default, min_gpa, max_gpa)
 VALUES
   ('Standard 4.0', 'Standard US 4.0 GPA scale', 'gpa', true, 0.00, 4.00),
-  ('Thai 10-Point', 'Thai educational system 10-point scale', 'points', false, 0, 10)
+  ('Thai 10-Point', 'Thai educational system 10-point scale', 'points', false, 0, 9.99)
 ON CONFLICT (name) DO NOTHING;
 
 -- Insert letter grades for 4.0 scale
@@ -65,3 +65,8 @@ CROSS JOIN (VALUES
 ) AS g(letter, name, min_pct, max_pct, gpa_val, gp_val, passing)
 WHERE gs.name = 'Thai 10-Point'
 ON CONFLICT (grading_scale_id, letter) DO NOTHING;
+
+-- Dummy class_section for migration safety
+INSERT INTO class_sections (id, name)
+VALUES ('00000000-0000-0000-0000-000000000000', 'Unknown')
+ON CONFLICT DO NOTHING;

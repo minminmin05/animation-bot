@@ -365,7 +365,7 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto overflow-visible bg-white dark:bg-gray-900">
         <DialogHeader>
           <DialogTitle>Edit Teacher</DialogTitle>
           <DialogDescription>
@@ -410,10 +410,10 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
                 onValueChange={(value) => setFormData({ ...formData, department: value })}
                 required
               >
-                <SelectTrigger id="department">
+                <SelectTrigger id="department" className="w-full">
                   <SelectValue placeholder="Select department" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-10">
                   {DEPARTMENTS.map((dept) => (
                     <SelectItem key={dept.value} value={dept.value}>
                       {dept.label}
@@ -423,17 +423,17 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
               </Select>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 mb-4">
               <Label htmlFor="subject">Subject *</Label>
               <Select
                 value={formData.subject}
                 onValueChange={(value) => setFormData({ ...formData, subject: value })}
                 required
               >
-                <SelectTrigger id="subject">
+                <SelectTrigger id="subject" className="w-full">
                   <SelectValue placeholder="Select subject" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-10">
                   {SUBJECTS.map((subject) => (
                     <SelectItem key={subject} value={subject}>
                       {subject}
