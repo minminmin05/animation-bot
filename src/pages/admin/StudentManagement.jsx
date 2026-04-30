@@ -21,6 +21,24 @@ const StudentManagement = () => {
     phone: '',
     address: ''
   })
+  
+  // Edit State
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editingStudent, setEditingStudent] = useState(null)
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    class: '',
+    grade_level: '',
+    date_of_birth: '',
+    phone: '',
+    address: '',
+    parent_name: '',
+    emergency_contact: '',
+    blood_type: '',
+    medical_conditions: '',
+    religion: '',
+    nationality: ''
+  })
 
   useEffect(() => {
     fetchStudents()
@@ -55,6 +73,12 @@ const StudentManagement = () => {
           phone,
           address,
           date_of_birth,
+          parent_name,
+          emergency_contact,
+          blood_type,
+          medical_conditions,
+          religion,
+          nationality,
           enrollment_date,
           created_at,
           updated_at,
@@ -141,6 +165,70 @@ const StudentManagement = () => {
       setShowModal(false)
     } catch (error) {
       console.error('Error creating student:', error)
+    }
+  }
+
+  /**
+   * Handle edit student click
+   */
+  const handleEditClick = (student) => {
+    setEditingStudent(student)
+    setEditFormData({
+      name: student.name || '',
+      class: student.class || '',
+      grade_level: student.grade_level || '',
+      date_of_birth: student.date_of_birth || '',
+      phone: student.phone || '',
+      address: student.address || '',
+      parent_name: student.parent_name || '',
+      emergency_contact: student.emergency_contact || '',
+      blood_type: student.blood_type || '',
+      medical_conditions: student.medical_conditions || '',
+      religion: student.religion || '',
+      nationality: student.nationality || ''
+    })
+    setShowEditModal(true)
+  }
+
+  /**
+   * Handle edit student submit
+   */
+  const handleEditSubmit = async (e) => {
+    e.preventDefault()
+
+    try {
+      const { error: updateError } = await supabase
+        .from('students')
+        .update({
+          name: editFormData.name,
+          class: editFormData.class,
+          grade_level: editFormData.grade_level ? parseInt(editFormData.grade_level) : null,
+          date_of_birth: editFormData.date_of_birth || null,
+          phone: editFormData.phone || null,
+          address: editFormData.address || null,
+          parent_name: editFormData.parent_name || null,
+          emergency_contact: editFormData.emergency_contact || null,
+          blood_type: editFormData.blood_type || null,
+          medical_conditions: editFormData.medical_conditions || null,
+          religion: editFormData.religion || null,
+          nationality: editFormData.nationality || null
+        })
+        .eq('id', editingStudent.id)
+
+      if (updateError) throw updateError
+
+      // Update local state
+      setStudents(prev => prev.map(s => 
+        s.id === editingStudent.id 
+          ? { ...s, ...editFormData }
+          : s
+      ))
+      
+      setShowEditModal(false)
+      console.log('✅ Student updated successfully')
+    } catch (err) {
+      console.error('❌ Error updating student:', err)
+      alert('Failed to update student: ' + err.message)
     }
   }
 
@@ -306,6 +394,12 @@ const StudentManagement = () => {
                   </td>
                   <td className="p-4 text-right">
                     <button
+                      onClick={() => handleEditClick(student)}
+                      className="text-blue-600 hover:text-blue-700 dark:text-blue-400 text-sm font-medium hover:underline mr-4"
+                    >
+                      Edit
+                    </button>
+                    <button
                       onClick={() => handleDelete(student.id)}
                       className="text-red-600 hover:text-red-700 dark:text-red-400 text-sm font-medium hover:underline"
                     >
@@ -417,6 +511,225 @@ const StudentManagement = () => {
                     type="button"
                     onClick={() => setShowModal(false)}
                     className="flex-1 btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Student Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between sticky top-0 bg-white dark:bg-gray-800 z-10">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Edit Student Information</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="p-6">
+              <form onSubmit={handleEditSubmit} className="space-y-6">
+                {/* Academic Information */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">Academic Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Full Name
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={editFormData.name}
+                        onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="John Doe"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Class
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.class}
+                        onChange={(e) => setEditFormData({ ...editFormData, class: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="10A"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Grade Level
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="12"
+                        value={editFormData.grade_level}
+                        onChange={(e) => setEditFormData({ ...editFormData, grade_level: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="10"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Personal Information */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">Personal Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Date of Birth
+                      </label>
+                      <input
+                        type="date"
+                        value={editFormData.date_of_birth}
+                        onChange={(e) => setEditFormData({ ...editFormData, date_of_birth: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Religion
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.religion}
+                        onChange={(e) => setEditFormData({ ...editFormData, religion: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="Buddhism, Christianity, etc."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Nationality
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.nationality}
+                        onChange={(e) => setEditFormData({ ...editFormData, nationality: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="Thai"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Contact Information */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">Contact & Address</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Student Phone Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={editFormData.phone}
+                        onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="08X-XXX-XXXX"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Address
+                    </label>
+                    <textarea
+                      value={editFormData.address}
+                      onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+                      className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full h-24 resize-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      placeholder="Full Address"
+                    />
+                  </div>
+                </div>
+
+                {/* Parent & Emergency Info */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">Parent & Emergency Contact</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Parent / Guardian Name
+                      </label>
+                      <input
+                        type="text"
+                        value={editFormData.parent_name}
+                        onChange={(e) => setEditFormData({ ...editFormData, parent_name: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="Parent's Full Name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Emergency Contact Number
+                      </label>
+                      <input
+                        type="tel"
+                        value={editFormData.emergency_contact}
+                        onChange={(e) => setEditFormData({ ...editFormData, emergency_contact: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="08X-XXX-XXXX"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Medical Information */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 pb-2 mb-4">Medical Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Blood Type
+                      </label>
+                      <select
+                        value={editFormData.blood_type}
+                        onChange={(e) => setEditFormData({ ...editFormData, blood_type: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                      >
+                        <option value="">Select Blood Type</option>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="AB">AB</option>
+                        <option value="O">O</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Medical Conditions / Allergies
+                      </label>
+                      <textarea
+                        value={editFormData.medical_conditions}
+                        onChange={(e) => setEditFormData({ ...editFormData, medical_conditions: e.target.value })}
+                        className="input-field border border-gray-300 dark:border-gray-600 rounded-lg p-2 w-full h-20 resize-none bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                        placeholder="E.g., Peanut allergy, Asthma"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 pt-6 border-t border-gray-200 dark:border-gray-700 mt-6 sticky bottom-0 bg-white dark:bg-gray-800 py-4">
+                  <button type="submit" className="flex-1 btn-primary py-3 rounded-lg font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm">
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="flex-1 btn-secondary bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 py-3 rounded-lg font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors shadow-sm"
                   >
                     Cancel
                   </button>

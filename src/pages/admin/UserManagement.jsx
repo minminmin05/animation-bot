@@ -73,11 +73,13 @@ const UserManagement = () => {
     }
 
     try {
-      const { data, error } = await supabase.rpc('admin_create_user', {
-        user_email: trimmedEmail,
-        user_password: trimmedPassword,
-        user_full_name: trimmedName,
-        user_role: formData.role
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: trimmedEmail,
+          password: trimmedPassword,
+          fullName: trimmedName,
+          role: formData.role
+        }
       })
 
       if (error) throw error
@@ -90,10 +92,9 @@ const UserManagement = () => {
           resetForm()
         }, 1500)
       } else {
-        // Check if error is about duplicate user
         const errorMsg = data?.error || 'Failed to create user'
         if (errorMsg.includes('already exists')) {
-          setFormError('User already left - this email or name is already in use')
+          setFormError('User already exists - this email is already in use')
         } else {
           setFormError(errorMsg)
         }

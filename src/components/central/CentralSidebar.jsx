@@ -20,6 +20,7 @@ import {
   UserPlus,
   Link,
   Users as UserGroup,
+  Bot
 } from 'lucide-react'
 
 const navigationItems = [
@@ -93,6 +94,12 @@ const navigationItems = [
     title: 'System Settings',
     url: '/admin/system',
     icon: Settings,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'AI Assistant',
+    url: '/admin/ai-assistant',
+    icon: Bot,
     roles: ['admin', 'owner'],
   },
 ]

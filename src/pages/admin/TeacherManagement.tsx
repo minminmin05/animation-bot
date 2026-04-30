@@ -600,22 +600,13 @@ const TeacherManagement = () => {
 
       console.log('Raw teacher data from Supabase:', data)
 
-      // Process teachers and add class counts
-      const teachersWithCounts = await Promise.all(
-        (data || []).map(async (teacher: any) => {
-          const { count } = await centralSupabase
-            .from('classes')
-            .select('*', { count: 'exact', head: true })
-            .eq('teacher_id', teacher.id)
-
-          return {
-            ...teacher,
-            email: teacher.email || 'No email',
-            full_name: teacher.full_name || teacher.name,
-            class_count: count || 0
-          }
-        })
-      )
+      // Use the class_count returned directly from RPC
+      const teachersWithCounts = (data || []).map((teacher: any) => ({
+        ...teacher,
+        email: teacher.email || 'No email',
+        full_name: teacher.full_name || teacher.name,
+        class_count: Number(teacher.class_count) || 0
+      }))
 
       console.log('Final teachers with counts:', teachersWithCounts)
 

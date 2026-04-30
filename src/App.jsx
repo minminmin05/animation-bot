@@ -42,6 +42,9 @@ import GradingManagement from './pages/admin/GradingManagement'
 // Central System Pages
 import CentralDashboard from './pages/central/CentralDashboard'
 
+// AI Pages
+import AIChatAssistant from './pages/admin/AIChatAssistant'
+
 function App() {
   return (
     <AuthProvider>
@@ -134,6 +137,7 @@ function App() {
             <Route path="enrollment" element={<StudentEnrollment />} />
             <Route path="academic" element={<AcademicManagement />} />
             <Route path="grading" element={<GradingManagement />} />
+            <Route path="ai-assistant" element={<AIChatAssistant />} />
             <Route path="facilities" element={<div className="p-6"><h1 className="text-2xl font-bold">School Facilities - Coming Soon</h1></div>} />
             <Route path="links" element={<div className="p-6"><h1 className="text-2xl font-bold">System Links - Coming Soon</h1></div>} />
             <Route path="settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Admin Settings - Coming Soon</h1></div>} />
