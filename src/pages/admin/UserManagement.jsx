@@ -73,18 +73,18 @@ const UserManagement = () => {
     }
 
     try {
-      const { data, error } = await supabase.functions.invoke('create-user', {
-        body: {
-          email: trimmedEmail,
-          password: trimmedPassword,
-          fullName: trimmedName,
-          role: formData.role
-        }
+      // Use RPC function instead of Edge Function
+      const { data, error } = await supabase.rpc('admin_create_user', {
+        user_email: trimmedEmail,
+        user_password: trimmedPassword,
+        user_full_name: trimmedName,
+        user_role: formData.role
       })
 
       if (error) throw error
 
-      if (data?.success) {
+      // RPC returns data directly, check the response
+      if (data && data.success) {
         setFormSuccess('User created successfully!')
         await fetchUsers()
         setTimeout(() => {
