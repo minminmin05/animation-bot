@@ -2,7 +2,23 @@
   "permissions": {
     "allow": [
       "Bash(npx supabase *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(node *)",
+      "Bash(npm install *)",
+      "mcp__supabase__list_projects",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__list_tables",
+      "mcp__supabase__list_extensions"
     ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "supabase"
+  ],
+  "mcpServers": {
+    "supabase": {
+      "type": "http",
+      "url": "https://mcp.supabase.com/mcp"
+    }
   }
 }

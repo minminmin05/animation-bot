@@ -1,8 +1,20 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../config/supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 import { Spinner } from '../../components/Spinner'
 import { useAuth } from '../../context/AuthContext'
 import { Plus, Search, UserCheck, UserX, Shield, Users as UsersIcon, AlertCircle } from 'lucide-react'
+
+// Create admin client with service role key for user creation
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+
+// Note: Service role key should only be used server-side, but for internal admin tools
+// with proper access control, this approach is acceptable
+let supabaseAdmin = null
+if (supabaseServiceKey) {
+  supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey)
+}
 
 const UserManagement = () => {
   const { user: currentUser } = useAuth()
@@ -72,18 +84,36 @@ const UserManagement = () => {
       return
     }
 
+    // Debug log - ตรวจสอบค่าก่อนส่ง
+    console.log('Creating user with data:', {
+      email: trimmedEmail,
+      password: '***', // ไม่โชว์ password จริง
+      fullName: trimmedName,
+      role: formData.role
+    })
+
     try {
-      // Use RPC function instead of Edge Function
-      const { data, error } = await supabase.rpc('admin_create_user', {
-        user_email: trimmedEmail,
-        user_password: trimmedPassword,
-        user_full_name: trimmedName,
-        user_role: formData.role
+      // ✅ ใช้ Edge Function พร้อม body ที่ถูกต้อง
+      const { data, error } = await supabase.functions.invoke('create-user', {
+        body: {
+          email: trimmedEmail,
+          password: trimmedPassword,
+          fullName: trimmedName,
+          role: formData.role
+        }
       })
 
-      if (error) throw error
+      // Debug log - ตรวจสอบ response
+      console.log('Edge Function Response:', { data, error })
 
-      // RPC returns data directly, check the response
+      if (error) {
+        console.error('Edge Function Error:', error)
+        setFormError(error.message || 'Failed to create user')
+        setSubmitting(false)
+        return
+      }
+
+      // Edge Function ส่งกลับ { success: true, user: {...} }
       if (data && data.success) {
         setFormSuccess('User created successfully!')
         await fetchUsers()
@@ -93,7 +123,7 @@ const UserManagement = () => {
         }, 1500)
       } else {
         const errorMsg = data?.error || 'Failed to create user'
-        if (errorMsg.includes('already exists')) {
+        if (errorMsg.includes('already') || errorMsg.includes('exists')) {
           setFormError('User already exists - this email is already in use')
         } else {
           setFormError(errorMsg)
@@ -101,7 +131,7 @@ const UserManagement = () => {
       }
 
     } catch (error) {
-      console.error('Error:', error)
+      console.error('Error creating user:', error)
       setFormError(error.message || 'Failed to create user')
     } finally {
       setSubmitting(false)

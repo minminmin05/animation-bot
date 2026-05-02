@@ -16,24 +16,49 @@ import {
 } from 'lucide-react'
 
 const TeacherDashboard = () => {
-  const { profileData } = useAuth()
+  const { profileData, user } = useAuth()
   const [classes, setClasses] = useState([])
   const [students, setStudents] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (profileData?.id) {
+    // Fetch data when we have a user (even if profileData is still loading)
+    if (user?.id) {
       fetchData()
     }
-  }, [profileData?.id])
+  }, [user?.id, profileData?.id]) // Refetch when profileData loads
 
   const fetchData = async () => {
-    if (!profileData?.id) return
+    // Get teacher_id - first try from profileData, otherwise fetch from teachers table
+    let teacherId = profileData?.id
+
+    // If no profileData or no teacher_id, fetch from teachers table using user.id
+    if (!teacherId && user?.id) {
+      const { data: teacherData, error: teacherError } = await supabase
+        .from('teachers')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (teacherError) {
+        console.error('Error fetching teacher:', teacherError)
+      } else if (teacherData) {
+        teacherId = teacherData.id
+        console.log('Found teacher_id:', teacherId)
+      }
+    }
+
+    if (!teacherId) {
+      console.error('No teacher_id found. User may not be a teacher.')
+      setLoading(false)
+      return
+    }
+
     try {
       setLoading(true)
       // Fetch teacher's classes
-      const { data: classesData } = await supabase
+      const { data: classesData, error: classesError } = await supabase
         .from('classes')
         .select(`
           *,
@@ -41,7 +66,11 @@ const TeacherDashboard = () => {
             students (*)
           )
         `)
-        .eq('teacher_id', profileData?.id)
+        .eq('teacher_id', teacherId)
+
+      if (classesError) {
+        console.error('Error fetching classes:', classesError)
+      }
 
       if (classesData) {
         setClasses(classesData)
@@ -53,11 +82,15 @@ const TeacherDashboard = () => {
       }
 
       // Fetch assignments
-      const { data: assignmentsData } = await supabase
+      const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('assignments')
         .select('*')
-        .eq('teacher_id', profileData?.id)
+        .eq('teacher_id', teacherId)
         .order('due_date', { ascending: true })
+
+      if (assignmentsError) {
+        console.error('Error fetching assignments:', assignmentsError)
+      }
 
       if (assignmentsData) setAssignments(assignmentsData)
     } catch (error) {
@@ -67,7 +100,7 @@ const TeacherDashboard = () => {
     }
   }
 
-  if (loading || !profileData) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
         <Spinner size="large" />
@@ -104,15 +137,15 @@ const TeacherDashboard = () => {
         <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-48 h-48 bg-pink-500 opacity-20 rounded-full blur-2xl"></div>
         
         <div className="relative z-10">
-          <motion.h1 
+          <motion.h1
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
             className="text-3xl sm:text-4xl font-extrabold tracking-tight"
           >
-            Welcome back, {profileData?.name || 'Teacher'}! 👋
+            Welcome back, {profileData?.name || user?.user_metadata?.full_name || 'Teacher'}! 👋
           </motion.h1>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}

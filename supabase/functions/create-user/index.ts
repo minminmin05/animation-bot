@@ -1,55 +1,89 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4'
 
-// ใช้ service_role key เพื่อสร้าง auth user
+// CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS'
+}
+
+// Environment variables
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 serve(async (req) => {
-  try {
-    // 1. รับข้อมูลจาก request
-    const { email, password, fullName, role } = await req.json()
+  // Handle OPTIONS preflight request
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
 
-    // 2. Validate inputs
+  try {
+    // Parse request body
+    const body = await req.json()
+
+    // Extract and trim fields
+    const email = body.email?.trim()?.toLowerCase()
+    const password = body.password?.trim()
+    const fullName = body.fullName?.trim()
+    const role = body.role
+
+    console.log('INPUT:', { email, password: '***', fullName, role })
+
+    // Validate required fields
     if (!email || !password || !fullName || !role) {
       return new Response(
         JSON.stringify({ success: false, error: 'All fields are required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
+    // Validate password length
+    if (password.length < 4) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Password must be at least 4 characters' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    // Validate role
     if (!['student', 'teacher', 'parent', 'admin'].includes(role)) {
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid role' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 3. ตรวจสอบสิทธิ์ admin (จาก Authorization header)
+    // Get authorization header
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Unauthorized' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Unauthorized - Missing token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 4. สร้าง Supabase client ด้วย service_role key
-    const supabase = createClient(supabaseUrl, supabaseServiceKey)
+    // Create Supabase client with service role
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
 
-    // 5. ตรวจสอบว่า user ที่ส่ง request เป็น admin
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
+    // Verify user token
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
 
     if (authError || !user) {
+      console.error('AUTH ERROR:', authError)
       return new Response(
-        JSON.stringify({ success: false, error: 'Invalid token' }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Invalid authentication token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 6. เช็ค role จาก public.users
+    // Check if user is admin
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('role')
@@ -59,37 +93,44 @@ serve(async (req) => {
     if (userError || !userData || userData.role !== 'admin') {
       return new Response(
         JSON.stringify({ success: false, error: 'Admin access required' }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } }
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // 7. สร้าง auth user (ใช้ admin API + fake email support)
+    // Create auth user using Supabase Admin API
+    console.log('Creating user:', { email, role })
+
     const { data: newUserData, error: createError } = await supabase.auth.admin.createUser({
-      email: email.trim(),
+      email: email,
       password: password,
-      email_confirm: true,        // ← ปิด email confirmation
+      email_confirm: true,
       user_metadata: {
-        full_name: fullName.trim(),
+        full_name: fullName,
         role: role
       }
     })
 
+    console.log('RESULT:', newUserData?.user?.id)
+    console.log('ERROR:', createError)
+
     if (createError) {
-      // ตรวจสอบ error จาก duplicate email
-      if (createError.message?.includes('already been registered')) {
+      // Check for duplicate email error
+      if (createError.message.includes('already') ||
+          createError.message.includes('duplicate') ||
+          createError.message.includes('exists')) {
         return new Response(
-          JSON.stringify({
-            success: false,
-            error: 'A user with this email already exists'
-          }),
-          { status: 409, headers: { 'Content-Type': 'application/json' } }
+          JSON.stringify({ success: false, error: 'A user with this email already exists' }),
+          { status: 409, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
-      throw createError
+
+      return new Response(
+        JSON.stringify({ success: false, error: createError.message }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // 8. Trigger จะทำงานอัตโนมัติ → สร้างข้อมูลใน public.users
-    // ไม่ต้อง insert เพิ่มเอง
+    console.log('User created successfully:', { id: newUserData.user.id, email: newUserData.user.email })
 
     return new Response(
       JSON.stringify({
@@ -102,17 +143,26 @@ serve(async (req) => {
           role: role
         }
       }),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
-  } catch (error) {
-    console.error('Error creating user:', error)
+  } catch (err) {
+    console.error('FATAL ERROR:', err)
+
+    // Check if it's a JSON parse error
+    if (err.message.includes('JSON') || err.message.includes('Unexpected end')) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Invalid request body - must be valid JSON with email, password, fullName, role'
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message || 'Failed to create user'
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
+      JSON.stringify({ success: false, error: err.message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
 })
