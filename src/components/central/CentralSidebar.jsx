@@ -22,7 +22,8 @@ import {
   Link,
   Users as UserGroup,
   Bot,
-  Database
+  Database,
+  ClipboardCheck
 } from 'lucide-react'
 
 const navigationItems = [
@@ -78,6 +79,12 @@ const navigationItems = [
     title: 'Grading Settings',
     url: '/admin/grading',
     icon: Award,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'Student Grades',
+    url: '/admin/student-grades',
+    icon: ClipboardCheck,
     roles: ['admin', 'owner'],
   },
   {

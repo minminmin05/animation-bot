@@ -447,7 +447,7 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
                 <SelectTrigger id="department" className="w-full">
                   <SelectValue placeholder={loadingDepts ? "Loading departments..." : "Select department"} />
                 </SelectTrigger>
-                <SelectContent className="z-10">
+                <SelectContent>
                   <SelectItem value="unassigned">Unassigned</SelectItem>
                   {deptList.length === 0 ? (
                     <div className="px-2 py-1.5 text-sm text-gray-500">
@@ -479,7 +479,7 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
                 <SelectTrigger id="subject" className="w-full">
                   <SelectValue placeholder="Select subject" />
                 </SelectTrigger>
-                <SelectContent className="z-10">
+                <SelectContent>
                   {SUBJECTS.map((subject) => (
                     <SelectItem key={subject} value={subject}>
                       {subject}

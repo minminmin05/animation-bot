@@ -39,6 +39,7 @@ import DepartmentManagement from './pages/admin/DepartmentManagement'
 import StudentEnrollment from './pages/admin/StudentEnrollment'
 import AcademicManagement from './pages/admin/AcademicManagement'
 import GradingManagement from './pages/admin/GradingManagement'
+import StudentGradesAdmin from './pages/admin/StudentGradesAdmin'
 
 // Central System Pages
 import CentralDashboard from './pages/central/CentralDashboard'
@@ -140,6 +141,7 @@ function App() {
             <Route path="enrollment" element={<StudentEnrollment />} />
             <Route path="academic" element={<AcademicManagement />} />
             <Route path="grading" element={<GradingManagement />} />
+            <Route path="student-grades" element={<StudentGradesAdmin />} />
             <Route path="ai-assistant" element={<AIChatAssistant />} />
             <Route path="knowledge-base" element={<KnowledgeBaseManagement />} />
             <Route path="facilities" element={<div className="p-6"><h1 className="text-2xl font-bold">School Facilities - Coming Soon</h1></div>} />
