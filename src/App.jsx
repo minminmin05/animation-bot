@@ -35,6 +35,7 @@ import UserManagement from './pages/admin/UserManagement'
 import StudentManagement from './pages/admin/StudentManagement'
 import ClassManagement from './pages/admin/ClassManagement'
 import TeacherManagement from './pages/admin/TeacherManagement'
+import DepartmentManagement from './pages/admin/DepartmentManagement'
 import StudentEnrollment from './pages/admin/StudentEnrollment'
 import AcademicManagement from './pages/admin/AcademicManagement'
 import GradingManagement from './pages/admin/GradingManagement'
@@ -135,6 +136,7 @@ function App() {
             <Route path="students" element={<StudentManagement />} />
             <Route path="classes" element={<ClassManagement />} />
             <Route path="teachers" element={<TeacherManagement />} />
+            <Route path="departments" element={<DepartmentManagement />} />
             <Route path="enrollment" element={<StudentEnrollment />} />
             <Route path="academic" element={<AcademicManagement />} />
             <Route path="grading" element={<GradingManagement />} />

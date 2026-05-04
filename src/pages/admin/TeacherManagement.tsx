@@ -21,7 +21,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { centralSupabase } from '@/integrations/supabase/central-client'
+import { supabase } from '@/config/supabaseClient'
+import departmentService, { Department } from '@/integrations/supabase/department-service'
 // Uncomment for development debugging:
 // import { TeacherManagementDebug } from './TeacherManagementDebug'
 
@@ -34,7 +35,8 @@ interface Teacher {
   user_id: string
   name: string
   subject: string
-  department: string
+  department: string | null
+  department_id: string | null
   employee_id: string | null
   phone: string | null
   qualifications: string | null
@@ -49,7 +51,7 @@ interface TeacherFormData {
   name: string
   email: string
   subject: string
-  department: string
+  department_id: string | undefined
   employee_id: string
   phone: string
   qualifications: string
@@ -69,13 +71,22 @@ interface ClassInfo {
 // CONSTANTS
 // ========================================
 
-const DEPARTMENTS = [
-  { value: 'STEM', label: 'STEM', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
-  { value: 'Humanities', label: 'Humanities', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' },
-  { value: 'Arts', label: 'Arts', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' },
-  { value: 'Physical Education', label: 'Physical Education', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300' },
-  { value: 'Languages', label: 'Languages', color: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300' },
-] as const
+// Department colors for badges - dynamically assigned based on department name hash
+const getDepartmentColor = (deptName: string) => {
+  const colors = [
+    { bg: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' },
+    { bg: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' },
+    { bg: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' },
+    { bg: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300' },
+    { bg: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-300' },
+    { bg: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-300' },
+    { bg: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-300' },
+    { bg: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300' },
+  ]
+  // Use simple hash of department name to pick consistent color
+  const hash = deptName.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+  return colors[hash % colors.length].bg
+}
 
 const SUBJECTS = [
   'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Computer Science',
@@ -88,7 +99,7 @@ const EMPTY_FORM_DATA: TeacherFormData = {
   name: '',
   email: '',
   subject: '',
-  department: '',
+  department_id: undefined,  // Use undefined instead of empty string
   employee_id: '',
   phone: '',
   qualifications: '',
@@ -151,10 +162,9 @@ const TeacherAvatar = ({ name }: { name: string }) => {
   )
 }
 
-const DepartmentBadge = ({ department }: { department: string }) => {
-  const dept = DEPARTMENTS.find(d => d.value === department)
-  if (!dept) return <Badge variant="outline">{department}</Badge>
-  return <Badge className={dept.color}>{dept.label}</Badge>
+const DepartmentBadge = ({ department }: { department: string | null }) => {
+  if (!department) return <Badge variant="outline">Unassigned</Badge>
+  return <Badge className={getDepartmentColor(department)}>{department}</Badge>
 }
 
 // ========================================
@@ -182,7 +192,7 @@ const TeacherDetailDrawer = ({ teacher, isOpen, onClose, onEdit }: TeacherDetail
     if (!teacher?.id) return
     setLoading(true)
     try {
-      const { data, error } = await centralSupabase
+      const { data, error } = await supabase
         .from('classes')
         .select('*')
         .eq('teacher_id', teacher.id)
@@ -327,14 +337,38 @@ interface TeacherFormDialogProps {
 const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: TeacherFormDialogProps) => {
   const [formData, setFormData] = useState<TeacherFormData>(EMPTY_FORM_DATA)
   const [submitting, setSubmitting] = useState(false)
+  const [deptList, setDeptList] = useState<Department[]>([])
+  const [loadingDepts, setLoadingDepts] = useState(false)
+
+  // Fetch departments when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setLoadingDepts(true)
+      console.log('[TeacherForm] Fetching departments...')
+      departmentService.getDepartments()
+        .then((depts) => {
+          console.log('[TeacherForm] Departments fetched:', depts)
+          setDeptList(depts)
+        })
+        .catch((err) => {
+          console.error('[TeacherForm] Error fetching departments:', err)
+        })
+        .finally(() => {
+          setLoadingDepts(false)
+        })
+    }
+  }, [isOpen])
 
   useEffect(() => {
     if (teacher) {
+      console.log('[TeacherForm] Setting form data for teacher:', teacher.name)
+      console.log('[TeacherForm] teacher.department_id:', teacher.department_id)
+      console.log('[TeacherForm] teacher.department (text):', teacher.department)
       setFormData({
         name: teacher.name,
         email: teacher.email,
         subject: teacher.subject,
-        department: teacher.department,
+        department_id: teacher.department_id || 'unassigned',
         employee_id: teacher.employee_id || '',
         phone: teacher.phone || '',
         qualifications: teacher.qualifications || '',
@@ -347,7 +381,7 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!formData.name.trim() || !formData.email.trim() || !formData.subject || !formData.department) {
+    if (!formData.name.trim() || !formData.email.trim() || !formData.subject) {
       return
     }
 
@@ -406,21 +440,33 @@ const TeacherFormDialog = ({ isOpen, onClose, onSubmit, teacher, loading }: Teac
             <div className="space-y-2">
               <Label htmlFor="department">Department *</Label>
               <Select
-                value={formData.department}
-                onValueChange={(value) => setFormData({ ...formData, department: value })}
-                required
+                value={formData.department_id}
+                onValueChange={(value) => setFormData({ ...formData, department_id: value })}
+                disabled={loadingDepts}
               >
                 <SelectTrigger id="department" className="w-full">
-                  <SelectValue placeholder="Select department" />
+                  <SelectValue placeholder={loadingDepts ? "Loading departments..." : "Select department"} />
                 </SelectTrigger>
                 <SelectContent className="z-10">
-                  {DEPARTMENTS.map((dept) => (
-                    <SelectItem key={dept.value} value={dept.value}>
-                      {dept.label}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {deptList.length === 0 ? (
+                    <div className="px-2 py-1.5 text-sm text-gray-500">
+                      No departments available
+                    </div>
+                  ) : (
+                    deptList.map((dept) => (
+                      <SelectItem key={dept.id} value={dept.id}>
+                        {dept.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
+              {deptList.length === 0 && !loadingDepts && (
+                <p className="text-xs text-amber-600">
+                  No departments found. Add departments first.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2 mb-4">
@@ -565,6 +611,7 @@ const TeacherManagement = () => {
   const navigate = useNavigate()
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [filteredTeachers, setFilteredTeachers] = useState<Teacher[]>([])
+  const [departments, setDepartments] = useState<Department[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -587,10 +634,8 @@ const TeacherManagement = () => {
     setLoading(true)
     setError(null)
     try {
-      console.log('Fetching teachers from database...')
-
-      // Use RPC function to bypass RLS issues with users table join
-      const { data, error } = await centralSupabase
+      // Use RPC function to get teachers with department names
+      const { data, error } = await supabase
         .rpc('admin_get_teachers_with_emails')
 
       if (error) {
@@ -598,17 +643,15 @@ const TeacherManagement = () => {
         throw error
       }
 
-      console.log('Raw teacher data from Supabase:', data)
-
-      // Use the class_count returned directly from RPC
+      // The RPC now returns department name from the join
       const teachersWithCounts = (data || []).map((teacher: any) => ({
         ...teacher,
         email: teacher.email || 'No email',
         full_name: teacher.full_name || teacher.name,
-        class_count: Number(teacher.class_count) || 0
+        class_count: Number(teacher.class_count) || 0,
+        // department is now properly joined from departments table
+        department: teacher.department || 'Unassigned'
       }))
-
-      console.log('Final teachers with counts:', teachersWithCounts)
 
       setTeachers(teachersWithCounts)
       setFilteredTeachers(teachersWithCounts)
@@ -627,7 +670,17 @@ const TeacherManagement = () => {
 
   useEffect(() => {
     fetchTeachers()
+    fetchDepartments()
   }, [fetchTeachers])
+
+  const fetchDepartments = async () => {
+    try {
+      const data = await departmentService.getDepartments()
+      setDepartments(data)
+    } catch (error: any) {
+      console.error('Error fetching departments:', error)
+    }
+  }
 
   // ========================================
   // FILTERING
@@ -649,7 +702,11 @@ const TeacherManagement = () => {
 
     // Department filter
     if (departmentFilter !== 'all') {
-      filtered = filtered.filter((t) => t.department === departmentFilter)
+      if (departmentFilter === 'unassigned') {
+        filtered = filtered.filter((t) => !t.department_id)
+      } else {
+        filtered = filtered.filter((t) => t.department_id === departmentFilter)
+      }
     }
 
     // Subject filter
@@ -668,12 +725,13 @@ const TeacherManagement = () => {
     if (!selectedTeacher) return
 
     try {
-      const { error } = await centralSupabase
+      const { error } = await supabase
         .from('teachers')
         .update({
           name: data.name,
           subject: data.subject,
-          department: data.department,
+          department_id: data.department_id === 'unassigned' ? null : data.department_id,
+          department: null, // Clear legacy department field
           employee_id: data.employee_id || null,
           phone: data.phone || null,
           qualifications: data.qualifications || null,
@@ -705,7 +763,7 @@ const TeacherManagement = () => {
     try {
       // Soft delete by updating users role or hard delete
       // Using hard delete for teachers table, cascade handles relations
-      const { error } = await centralSupabase
+      const { error } = await supabase
         .from('teachers')
         .delete()
         .eq('id', selectedTeacher.id)
@@ -816,11 +874,12 @@ const TeacherManagement = () => {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Departments</SelectItem>
-            {DEPARTMENTS.map((dept) => (
-              <SelectItem key={dept.value} value={dept.value}>
-                {dept.label}
+            {departments.map((dept) => (
+              <SelectItem key={dept.id} value={dept.id}>
+                {dept.name}
               </SelectItem>
             ))}
+            <SelectItem value="unassigned">Unassigned</SelectItem>
           </SelectContent>
         </Select>
         <Select value={subjectFilter} onValueChange={setSubjectFilter}>

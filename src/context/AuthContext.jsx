@@ -116,9 +116,12 @@ export const AuthProvider = ({ children }) => {
 
       console.log('User role found:', data?.role)
       const role = data?.role
-      if (!role || role === 'admin') {
-        // Double-check if this should be teacher/student/parent
+      if (!role) {
+        // No role found - check profile tables
         await determineRoleFromProfile(userId)
+      } else if (role === 'admin') {
+        // Admin role is valid directly from users table
+        setUserRole('admin')
       } else {
         setUserRole(role)
       }

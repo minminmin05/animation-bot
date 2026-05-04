@@ -15,6 +15,7 @@ import {
   BookOpen,
   Award,
   Building,
+  Building2,
   UserCog,
   LogOut,
   UserPlus,
@@ -59,6 +60,12 @@ const navigationItems = [
     title: 'Teacher Management',
     url: '/admin/teachers',
     icon: GraduationCap,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'Department Management',
+    url: '/admin/departments',
+    icon: Building2,
     roles: ['admin', 'owner'],
   },
   {
