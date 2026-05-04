@@ -307,7 +307,7 @@ const StudentGradesAdmin = () => {
   }
 
   const getLetterGrade = (percentage) => {
-    if (percentage === null || percentage === undefined || percentage === '') return 'N/A'
+    if (percentage === null || percentage === undefined || percentage === '') return '-'
     const pct = parseFloat(percentage)
     if (pct >= 90) return 'A'
     if (pct >= 85) return 'A-'
@@ -337,7 +337,7 @@ const StudentGradesAdmin = () => {
   }
 
   const getGradeColor = (letter) => {
-    if (letter === 'N/A') return 'bg-gray-100 text-gray-600'
+    if (letter === '-') return 'bg-gray-100 text-gray-600'
     if (letter.startsWith('A')) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
     if (letter.startsWith('B')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
     if (letter.startsWith('C')) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
@@ -502,8 +502,8 @@ const StudentGradesAdmin = () => {
                         const studentId = getStudentId(student)
                         const gradeRecord = getSubjectGrade(studentId)
                         const finalGrade = gradeRecord?.final_grade
-                        const letterGrade = finalGrade !== null && finalGrade !== undefined ? getLetterGrade(finalGrade) : 'N/A'
-                        const gradePoints = finalGrade !== null && finalGrade !== undefined ? getGradePoints(finalGrade).toFixed(2) : 'N/A'
+                        const letterGrade = finalGrade !== null && finalGrade !== undefined ? getLetterGrade(finalGrade) : '-'
+                        const gradePoints = finalGrade !== null && finalGrade !== undefined ? getGradePoints(finalGrade).toFixed(2) : '-'
 
                         return (
                           <tr key={student.id} className="border-t border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">

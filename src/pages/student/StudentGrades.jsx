@@ -83,7 +83,7 @@ const StudentGrades = () => {
       ...cls,
       grades: subjectGrades,
       average: avgGrade,
-      averageDisplay: avgGrade > 0 ? avgGrade.toFixed(1) : 'N/A'
+      averageDisplay: avgGrade > 0 ? avgGrade.toFixed(1) : '-'
     }
   }).filter(subject => subject.grades.length > 0)
 
@@ -214,7 +214,7 @@ const StudentGrades = () => {
         ) : (
           <div className="space-y-4">
             {gradesBySubject.map((subject) => {
-              const letterGrade = subject.average > 0 ? getLetterGrade(subject.average) : 'N/A'
+              const letterGrade = subject.average > 0 ? getLetterGrade(subject.average) : '-'
               const gradeColor = subject.average > 0 ? getGradeColor(letterGrade) : 'bg-gray-100 text-gray-600'
 
               return (

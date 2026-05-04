@@ -144,9 +144,6 @@ function App() {
             <Route path="student-grades" element={<StudentGradesAdmin />} />
             <Route path="ai-assistant" element={<AIChatAssistant />} />
             <Route path="knowledge-base" element={<KnowledgeBaseManagement />} />
-            <Route path="facilities" element={<div className="p-6"><h1 className="text-2xl font-bold">School Facilities - Coming Soon</h1></div>} />
-            <Route path="links" element={<div className="p-6"><h1 className="text-2xl font-bold">System Links - Coming Soon</h1></div>} />
-            <Route path="settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Admin Settings - Coming Soon</h1></div>} />
             <Route path="system" element={<div className="p-6"><h1 className="text-2xl font-bold">System Settings - Coming Soon</h1></div>} />
             <Route path="" element={<Navigate to="/admin/dashboard" replace />} />
           </Route>

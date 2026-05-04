@@ -88,24 +88,6 @@ const navigationItems = [
     roles: ['admin', 'owner'],
   },
   {
-    title: 'School Facilities',
-    url: '/admin/facilities',
-    icon: Building,
-    roles: ['admin', 'owner'],
-  },
-  {
-    title: 'System Links',
-    url: '/admin/links',
-    icon: Link,
-    roles: ['admin', 'owner'],
-  },
-  {
-    title: 'Admin Settings',
-    url: '/admin/settings',
-    icon: UserCog,
-    roles: ['admin', 'owner'],
-  },
-  {
     title: 'System Settings',
     url: '/admin/system',
     icon: Settings,
