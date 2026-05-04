@@ -13,7 +13,17 @@
       "mcp__supabase__list_edge_functions",
       "mcp__supabase__get_logs",
       "Bash(npm list *)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(timeout 8 npm start)",
+      "Bash(npm start *)",
+      "Bash(curl -v http://localhost:3001/api/rag/ask -X POST -H \"Content-Type: application/json\" -d \"{\\\\\"question\\\\\":\\\\\"test\\\\\"}\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/rag/ask -H \"Content-Type: application/json\" -d \"{\\\\\"question\\\\\":\\\\\"นักเรียนต้องแต่งตัวยังไง\\\\\"}\")",
+      "Bash(netstat -ano)",
+      "Bash(findstr \":3001\")",
+      "Bash(findstr \"LISTENING\")",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(curl *)",
+      "Bash(awk '{print $5}')"
     ]
   },
   "enableAllProjectMcpServers": true,
