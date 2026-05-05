@@ -1,11 +1,17 @@
 {
   "version": 1,
   "skills": {
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "9e1c8b3103f92fa8092568a44fe64858de7c5c9dc65ce4bea8f168080e889cfd"
+    },
     "impeccable": {
       "source": "pbakaus/impeccable",
       "sourceType": "github",
-      "skillPath": ".agents/skills/impeccable/SKILL.md",
-      "computedHash": "ec17b065d277d888c57ae75ff170a0bb7f6159fab8e770f29bf4934f11eeb73e"
+      "skillPath": "skill/SKILL.md",
+      "computedHash": "42f2193fa20975959576a76d33e7f357bfe1d62001285ad03080cc3813398ac9"
     }
   }
 }

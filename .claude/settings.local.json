@@ -25,7 +25,8 @@
       "Bash(curl *)",
       "Bash(awk '{print $5}')",
       "Bash(nslookup dyjszninfosvugpmmeh.supabase.co)",
-      "Bash(ping -n 1 dyjszninfosvugpmmeh.supabase.co)"
+      "Bash(ping -n 1 dyjszninfosvugpmmeh.supabase.co)",
+      "Bash(jobs -l)"
     ]
   },
   "enableAllProjectMcpServers": true,
