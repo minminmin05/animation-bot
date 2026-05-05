@@ -1,252 +1,210 @@
-# RAG Pipeline Implementation Status
+# สถานะการพัฒนาระบบ RAG Pipeline
 
-**Last Updated:** 2026-05-04
-**Project:** Lumaid School Management App
+**อัปเดตล่าสุด:** 5 พฤษภาคม 2026
+**โปรเจกต์:** แอปพลิเคชันบริหารจัดการโรงเรียน Lumaid
 
-## Overview
+## ภาพรวม
 
-This document tracks the implementation progress of the Retrieval-Augmented Generation (RAG) pipeline for the school's AI chat assistant. The system enables the AI to answer questions about school policies, rules, and information using a knowledge base.
+เอกสารฉบับนี้ติดตามความคืบหน้าในการพัฒนาระบบ Retrieval-Augmented Generation (RAG) สำหรับผู้ช่วย AI แชทบอทของโรงเรียน ระบบนี้ช่วยให้ AI สามารถตอบคำถามเกี่ยวกับกฎระเบียบ นโยบาย และข้อมูลต่างๆ ของโรงเรียนได้จากฐานความรู้
 
 ---
 
-## Architecture
+## สถาปัตยกรรมระบบ
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              USER QUERY (Thai)                              │
+│                              คำถามจากผู้ใช้ (ภาษาไทย)                       │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    EMBEDDING GENERATION (Local)                              │
-│  Model: Xenova/all-MiniLM-L6-v2 (@xenova/transformers.js)                   │
-│  Dimensions: 384                                                            │
-│  Status: ✅ COMPLETE                                                         │
+│                    สร้าง Embedding (OpenAI API)                             │
+│  Model: text-embedding-3-small                                              │
+│  Dimensions: 1536                                                           │
+│  Status: ✅ สำเร็จ                                                            │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    VECTOR SIMILARITY SEARCH                                  │
+│                    ค้นหาความคล้ายด้วย Vector                                │
 │  Database: Supabase pgvector                                                │
 │  Function: match_knowledge_base()                                           │
-│  Status: ✅ COMPLETE                                                         │
+│  Status: ✅ สำเร็จ                                                            │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    LLM RESPONSE GENERATION (Local)                           │
-│  Model: llama3 (via Ollama)                                                 │
-│  Endpoint: http://localhost:11434                                           │
-│  Status: ✅ COMPLETE                                                         │
+│                    สร้างคำตอบจาก LLM (Google Gemini)                       │
+│  Model: gemini-2.0-flash-exp                                                │
+│  Status: ✅ สำเร็จ                                                            │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                                        ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    RESPONSE { text, emotion, tts, sources }                 │
+│                    การตอบกลับ { ข้อความ, อารมณ์, เสียงพูด, แหล่งที่มา }        │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Implementation Progress
+## โมเดลที่ใช้งาน
 
-### ✅ Phase 1: Infrastructure Setup (COMPLETE)
+### 1. Embedding Model
+| โมเดล | ไลบรารี | ขนาด | ตำแหน่ง |
+|--------|-----------|-------|---------|
+| **text-embedding-3-small** | OpenAI API | 1536 มิติ | Cloud API |
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Supabase pgvector** | ✅ Done | `knowledge_base` table with `vector(384)` column |
-| **Migration Script** | ✅ Done | `supabase/migrations/2_add_rag_pgvector_function.sql` |
-| **Similarity Function** | ✅ Done | `match_knowledge_base()` with cosine distance |
-| **Environment Config** | ✅ Done | `.env` configuration for API keys and endpoints |
+- **รันที่ไหน:** OpenAI API
+- **ค่าใช้จ่าย:** ตาม OpenAI pricing
 
-**Files:**
-- `supabase/migrations/2_add_rag_pgvector_function.sql`
+### 2. LLM Model
+| โมเดล | ไลบรารี | ตำแหน่ง |
+|--------|-----------|---------|
+| **gemini-2.0-flash-exp** | Google Generative AI | Cloud API |
+
+- **รันที่ไหน:** Google Gemini API
+- **ค่าใช้จ่าย:** ตาม Google AI pricing
 
 ---
 
-### ✅ Phase 2: Embedding Service (COMPLETE)
+## ความคืบหน้าการพัฒนา
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Embedding Model** | ✅ Done | `Xenova/all-MiniLM-L6-v2` (384 dimensions) |
-| **Local Inference** | ✅ Done | Uses `@xenova/transformers.js` - runs locally |
-| **Service Layer** | ✅ Done | `server/rag/services/embedding.service.ts` |
-| **Caching** | ✅ Done | Model cached in memory after first load |
+### ✅ เฟส 1: ติดตั้งโครงสร้างพื้นฐาน (สำเร็จ)
 
-**Features:**
-- No API costs (runs locally)
-- First run downloads ~80MB model
-- Subsequent runs are instant
+| ส่วนประกอบ | สถานะ | รายละเอียด |
+|-----------|--------|-------------|
+| **Supabase pgvector** | ✅ สำเร็จ | ตาราง `knowledge_base` พร้อมคอลัมน์ `vector(1536)` |
+| **Script Migration** | ✅ สำเร็จ | `supabase/migrations/20260505_update_rag_embedding_dimensions.sql` |
+| **ฟังก์ชันค้นหา** | ✅ สำเร็จ | `match_knowledge_base()` ใช้ cosine distance |
+| **ตั้งค่า Environment** | ✅ สำเร็จ | การตั้งค่า `.env` สำหรับ API keys |
 
-**Files:**
+---
+
+### ✅ เฟส 2: บริการสร้าง Embedding (สำเร็จ)
+
+| ส่วนประกอบ | สถานะ | รายละเอียด |
+|-----------|--------|-------------|
+| **โมเดล Embedding** | ✅ สำเร็จ | OpenAI `text-embedding-3-small` (1536 มิติ) |
+| **Service Layer** | ✅ สำเร็จ | `server/rag/services/embedding.service.ts` |
+
+**ไฟล์:**
 - `server/rag/services/embedding.service.ts`
 
 ---
 
-### ✅ Phase 3: Vector Store Integration (COMPLETE)
+### ✅ เฟส 3: เชื่อมต่อ Vector Store (สำเร็จ)
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Supabase Client** | ✅ Done | Configured with service role key |
-| **Insert Operation** | ✅ Done | `insertKnowledgeBase()` function |
-| **Search Operation** | ✅ Done | `searchByEmbedding()` with pgvector |
-| **Threshold Config** | ✅ Done | Adjustable similarity threshold (default 0.75) |
+| ส่วนประกอบ | สถานะ | รายละเอียด |
+|-----------|--------|-------------|
+| **Supabase Client** | ✅ สำเร็จ | ตั้งค่าด้วย service role key |
+| **การบันทึกข้อมูล** | ✅ สำเร็จ | ฟังก์ชัน `insertKnowledgeBase()` |
+| **การค้นหา** | ✅ สำเร็จ | ฟังก์ชัน `searchByEmbedding()` กับ pgvector |
+| **ตั้งค่า Threshold** | ✅ สำเร็จ | ปรับค่าความคล้ายได้ (ค่าเริ่มต้น 0.75) |
 
-**Files:**
+**ไฟล์:**
 - `server/rag/services/supabase.service.ts`
 
 ---
 
-### ✅ Phase 4: LLM Service (COMPLETE)
+### ✅ เฟส 4: บริการ LLM (สำเร็จ)
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| **LLM Integration** | ✅ Done | Ollama with llama3 model |
-| **Prompt Engineering** | ✅ Done | Thai language, school persona system prompt |
-| **Response Format** | ✅ Done | Structured output with emotion and sources |
-| **Error Handling** | ✅ Done | Fallback responses on failure |
+| ส่วนประกอบ | สถานะ | รายละเอียด |
+|-----------|--------|-------------|
+| **เชื่อมต่อ LLM** | ✅ สำเร็จ | Google Gemini API |
+| **ออกแบบ Prompt** | ✅ สำเร็จ | ภาษาไทย, บทบาทครูประจำชั้น |
+| **รูปแบบการตอบ** | ✅ สำเร็จ | โครงสร้างพร้อมอารมณ์และแหล่งที่มา |
+| **จัดการ Error** | ✅ สำเร็จ | คำตอบสำรองเมื่อเกิดข้อผิดพลาด |
 
-**Features:**
-- Local inference (no API costs)
-- Thai language support
-- Emotion classification (neutral, happy, concerned, helpful)
-- Source attribution
+**คุณสมบัติ:**
+- รองรับภาษาไทย
+- จำแนกอารมณ์ (ปกติ, ยินดี, กังวล, ช่วยเหลือ)
+- อ้างอิงแหล่งที่มา
 
-**Files:**
+**ไฟล์:**
 - `server/rag/services/llm.service.ts`
 
 ---
 
-### ✅ Phase 5: API Server (COMPLETE)
+### ✅ เฟส 5: เซิร์ฟเวอร์ API (สำเร็จ)
 
-| Endpoint | Method | Status | Description |
+| Endpoint | Method | สถานะ | คำอธิบาย |
 |----------|--------|--------|-------------|
-| `/api/rag/ask` | POST | ✅ Done | Full RAG pipeline with LLM response |
-| `/api/rag/query` | POST | ✅ Done | Retrieval only (vector search) |
-| `/api/rag/embed` | POST | ✅ Done | Add new document with embedding |
+| `/api/rag/ask` | POST | ✅ สำเร็จ | RAG เต็มรูปแบบพร้อมคำตอบจาก LLM |
+| `/api/rag/query` | POST | ✅ สำเร็จ | ค้นหาข้อมูลเท่านั้น (vector search) |
+| `/api/rag/embed` | POST | ✅ สำเร็จ | เพิ่มเอกสารใหม่พร้อม embedding |
 
-**Files:**
-- `server/index.ts` - Express server with CORS and JSON middleware
-- `server/package.json` - Dependencies managed
+**ไฟล์:**
+- `server/index.ts` - Express server พร้อม CORS และ JSON middleware
+- `server/package.json` - จัดการ dependencies
 
 **Dependencies:**
-- `express` - Web server
-- `@xenova/transformers` - Embedding generation
-- `@supabase/supabase-js` - Database client
-- `ollama` - LLM integration
+- `express` - เว็บเซิร์ฟเวอร์
+- `openai` - สร้าง embedding
+- `@supabase/supabase-js` - ไคลเอนต์ฐานข้อมูล
+- `@google/generative-ai` - เชื่อมต่อ LLM
 
 ---
 
-### ✅ Phase 6: Frontend Integration (COMPLETE)
+### ✅ เฟส 6: เชื่อมต่อ Frontend (สำเร็จ)
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Chat UI** | ✅ Done | `AIChatAssistant.tsx` with Thai language |
-| **Service Layer** | ✅ Done | `src/services/embedding/embeddingService.ts` |
-| **Emotion Display** | ✅ Done | Avatar表情 changes based on AI emotion |
-| **Loading States** | ✅ Done | Spinner animation during processing |
-| **Error Handling** | ✅ Done | Graceful fallback messages |
+| ส่วนประกอบ | สถานะ | รายละเอียด |
+|-----------|--------|-------------|
+| **หน้าตาแชท** | ✅ สำเร็จ | `AIChatAssistant.tsx` ภาษาไทย |
+| **Service Layer** | ✅ สำเร็จ | `src/services/embedding/embeddingService.ts` |
+| **แสดงอารมณ์** | ✅ สำเร็จ | ตัวการ์ตูผู้ช่วยเปลี่ยนตามอารมณ์ AI |
+| **สถานะโหลด** | ✅ สำเร็จ | แอนิเมชันสปินเนอร์ขณะประมวลผล |
+| **จัดการ Error** | ✅ สำเร็จ | ข้อความสำรองแบบกันเอง |
 
-**Features:**
-- Real-time chat interface
-- Emotion-aware avatar
-- Thai language support
-- Loading indicators
-- Error handling
-
-**Files:**
+**ไฟล์:**
 - `src/pages/admin/AIChatAssistant.tsx`
 - `src/services/embedding/embeddingService.ts`
 
 ---
 
-### ✅ Phase 7: Data Seeding (COMPLETE)
+### ✅ เฟส 7: เพิ่มข้อมูลตัวอย่าง (สำเร็จ)
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| **Seed Script** | ✅ Done | `server/seed.ts` with sample school data |
-| **Sample Data** | ✅ Done | 7 Thai documents covering rules, events, contact, payment |
-| **Auto-embedding** | ✅ Done | Embeddings generated on seed |
+| ส่วนประกอบ | สถานะ | รายละเอียด |
+|-----------|--------|-------------|
+| **Script Seed** | ✅ สำเร็จ | `server/seed.ts` พร้อมข้อมูลโรงเรียนตัวอย่าง |
+| **ข้อมูลตัวอย่าง** | ✅ สำเร็จ | 7 เอกสารภาษาไทยครอบคลุมกฎ กิจกรรม ติดต่อ ชำระเงิน |
+| **สร้าง Embedding** | ✅ สำเร็จ | สร้าง embedding อัตโนมัติตอน seed |
 
-**Sample Data Categories:**
-- Rules (uniform, classroom, teacher respect)
-- Events (exam schedule)
-- Contact (parent-teacher meetings)
-- Payment (tuition deadlines)
+**หมวดหมู่ข้อมูลตัวอย่าง:**
+- กฎระเบียบ (ยูนิฟอร์ม, ห้องเรียน, การเคารพครู)
+- กิจกรรม (ตารางสอบ)
+- ติดต่อ (วันพบผู้ปกครอง)
+- การเงิน (กำหนดชำระเงิน)
 
-**Files:**
+**ไฟล์:**
 - `server/seed.ts`
 
 ---
 
-## 🔄 In Progress / Next Steps
+## 🚀 เริ่มใช้งานอย่างรวดเร็ว
 
-### 🚧 Phase 8: Testing & Refinement (IN PROGRESS)
+### ข้อกำหนดเบื้องต้น
 
-| Task | Priority | Status |
-|------|----------|--------|
-| **Integration Testing** | High | Pending - End-to-end testing with Ollama |
-| **Performance Benchmarking** | Medium | Pending - Measure query latency |
-| **Knowledge Base Expansion** | Medium | Pending - Add more school documents |
-| **Error Recovery** | Medium | Partial - Basic fallbacks implemented |
+1. **API Keys** - ตั้งค่าใน `server/.env`
 
----
+### ตั้งค่า Environment Variables
 
-### 📋 Phase 9: Future Enhancements (PLANNED)
+```bash
+# Supabase
+SUPABASE_URL=supabase_url_ของคุณ
+SUPABASE_SERVICE_KEY=service_key_ของคุณ
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| **Streaming Responses** | High | Real-time token streaming from Ollama |
-| **Document Ingestion Pipeline** | High | UI for adding new knowledge base documents |
-| **Hybrid Search** | Medium | Combine vector + keyword search |
-| **Caching Layer** | Medium | Cache frequent queries |
-| **Multi-language Support** | Low | Add English language support |
-| **Voice Input/Output** | Low | Integrate TTS/STT for voice chat |
+# OpenAI (Embeddings)
+OPENAI_API_KEY=sk-...
 
----
+# Google Gemini (LLM)
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-2.0-flash-exp
 
-## 🗂️ Deprecated Components
+# API Server
+PORT=3001
+```
 
-The following components were initially implemented but replaced:
-
-| Component | Original Purpose | Replaced By | Reason |
-|-----------|-----------------|-------------|--------|
-| **OpenAI Embeddings** | Text embeddings | @xenova/transformers.js | Cost reduction |
-| **Pinecone Vector Store** | Vector database | Supabase pgvector | Cost reduction, simplified stack |
-| **Anthropic Claude** | LLM responses | Ollama llama3 | Cost reduction, local hosting |
-
-**Note:** The Pinecone integration files still exist but are unused:
-- `src/integrations/pinecone/client.ts`
-- `src/integrations/pinecone/config.ts`
-
----
-
-## 📊 Cost Comparison
-
-| Component | Old Stack (Monthly) | New Stack (Monthly) |
-|-----------|---------------------|---------------------|
-| Embeddings | ~$2 (OpenAI) | $0 (local) |
-| Vector Store | $70-840 (Pinecone) | $0 (Supabase included) |
-| LLM | ~$15-50 (Claude) | $0 (local Ollama) |
-| **Total** | **~$87-892/month** | **$0/month** |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-1. **Ollama** installed and running:
-   ```bash
-   ollama serve
-   ollama pull llama3
-   ```
-
-2. **Supabase** with pgvector extension enabled
-
-3. **Environment variables** configured in `server/.env`
-
-### Start the Server
+### เริ่มเซิร์ฟเวอร์
 
 ```bash
 cd server
@@ -254,103 +212,52 @@ npm install
 npm start
 ```
 
-### Seed Data
+### เพิ่มข้อมูลตัวอย่าง
 
 ```bash
 npm run seed
 ```
 
-### Test the API
-
-```bash
-curl -X POST http://localhost:3001/api/rag/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "นักเรียนต้องแต่งตัวยังไง"}'
-```
-
 ---
 
-## 📁 File Structure
+## 📁 โครงสร้างไฟล์
 
 ```
 school-management-app/
 ├── server/
 │   ├── index.ts                          # Express API server
-│   ├── seed.ts                           # Database seeding script
-│   ├── .env                              # Server environment variables
-│   ├── package.json                      # Server dependencies
+│   ├── seed.ts                           # Script เพิ่มข้อมูล
+│   ├── .env                              # ตั้งค่า environment เซิร์ฟเวอร์
+│   ├── package.json                      # Dependencies ฝั่งเซิร์ฟเวอร์
 │   └── rag/
 │       └── services/
-│           ├── embedding.service.ts      # Embedding generation
-│           ├── supabase.service.ts       # Vector store operations
-│           └── llm.service.ts            # LLM integration
+│           ├── embedding.service.ts      # สร้าง embedding (OpenAI)
+│           ├── supabase.service.ts       # จัดการ vector store
+│           └── llm.service.ts            # เชื่อมต่อ LLM (Gemini)
 │
 ├── src/
 │   ├── pages/admin/
-│   │   └── AIChatAssistant.tsx           # Chat UI component
-│   ├── services/embedding/
-│   │   └── embeddingService.ts           # Frontend API client
-│   └── integrations/pinecone/            # (Deprecated - unused)
+│   │   └── AIChatAssistant.tsx           # หน้าตาแชท UI
+│   └── services/embedding/
+│       └── embeddingService.ts           # ไคลเอนต์ API ฝั่ง frontend
 │
 └── supabase/
     └── migrations/
-        └── 2_add_rag_pgvector_function.sql # Database schema
+        ├── 2_add_rag_pgvector_function.sql
+        └── 20260505_update_rag_embedding_dimensions.sql
 ```
 
 ---
 
-## 🔧 Configuration
+## 📊 เปรียบเทียบโมเดล
 
-### Server Environment Variables
-
-```bash
-# Supabase
-SUPABASE_URL=your_supabase_url
-SUPABASE_SERVICE_KEY=your_service_key
-
-# Ollama
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
-
-# API Server
-PORT=3001
-```
-
-### Client Environment Variables
-
-```bash
-VITE_API_BASE_URL=http://localhost:3001
-```
+| ส่วนประกอบ | ระบบเก่า | ระบบใหม่ |
+|-----------|-----------------|-------------|
+| Embeddings | Xenova/all-MiniLM-L6-v2 (ที่เครื่อง) | OpenAI text-embedding-3-small |
+| ขนาด Embedding | 384 มิติ | 1536 มิติ |
+| Vector Store | Supabase pgvector | Supabase pgvector |
+| LLM | Ollama llama3 (ที่เครื่อง) | Google Gemini API |
 
 ---
 
-## 📈 Performance Metrics
-
-| Metric | Target | Current |
-|--------|--------|---------|
-| Embedding Generation | <1s | ~500ms (after model load) |
-| Vector Search | <500ms | ~200ms |
-| LLM Response | <5s | ~2-4s (depends on hardware) |
-| End-to-End Latency | <10s | ~3-5s |
-
----
-
-## 🐛 Known Issues
-
-1. **Cold Start**: First embedding generation downloads model (~80MB) - subsequent runs are fast
-2. **Ollama Dependency**: Server must be running for LLM responses
-3. **Thai Language**: Embeddings optimized for English - Thai performance may vary
-
----
-
-## 📞 Support
-
-For issues or questions:
-1. Check `server/RAG_SETUP.md` for detailed setup instructions
-2. Verify Ollama is running: `curl http://localhost:11434/api/tags`
-3. Check Supabase migration is applied
-4. Review server logs for detailed error messages
-
----
-
-**Document Version:** 1.0
+**เวอร์ชันเอกสาร:** 2.0

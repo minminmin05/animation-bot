@@ -1,24 +1,30 @@
-import { pipeline } from '@xenova/transformers'
+import OpenAI from 'openai'
 
-let embeddingModel: any = null
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+})
 
-export async function getModel() {
-  if (!embeddingModel) {
-    console.log('[Embedding] Loading all-MiniLM-L6-v2 model (first run downloads ~80MB)...')
-    embeddingModel = await pipeline(
-      'feature-extraction',
-      'Xenova/all-MiniLM-L6-v2'
-    )
-    console.log('[Embedding] Model loaded successfully')
-  }
-  return embeddingModel
-}
+const MODEL = 'text-embedding-3-small'
+export const MODEL_NAME = MODEL
+export const EMBEDDING_DIM = 1536
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const model = await getModel()
-  const output = await model(text, { pooling: 'mean', normalize: true })
-  return Array.from(output.data)
-}
+  try {
+    console.log('[Embedding] Generating embedding with OpenAI...')
 
-export const MODEL_NAME = 'Xenova/all-MiniLM-L6-v2'
-export const EMBEDDING_DIM = 384
+    const response = await openai.embeddings.create({
+      model: MODEL,
+      input: text,
+      dimensions: EMBEDDING_DIM
+    })
+
+    const embedding = response.data[0].embedding
+
+    console.log('[Embedding] Generated successfully')
+
+    return embedding
+  } catch (error) {
+    console.error('[Embedding] Error:', error)
+    throw new Error('Failed to generate embedding')
+  }
+}

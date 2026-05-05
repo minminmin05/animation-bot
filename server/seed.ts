@@ -1,3 +1,6 @@
+// Load environment variables FIRST before any other imports
+import 'dotenv/config'
+
 import { generateEmbedding } from './rag/services/embedding.service'
 import { insertKnowledgeBase } from './rag/services/supabase.service'
 

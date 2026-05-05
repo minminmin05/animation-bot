@@ -1,9 +1,9 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
-import { generateEmbedding } from './rag/services/embedding.service'
+import { generateEmbedding, MODEL_NAME as EMBED_MODEL } from './rag/services/embedding.service'
 import { searchByEmbedding, insertKnowledgeBase } from './rag/services/supabase.service'
-import { generateAnswer } from './rag/services/llm.service'
+import { generateAnswer, MODEL as LLM_MODEL } from './rag/services/llm.service'
 
 const app = express()
 app.use(cors())
@@ -85,9 +85,23 @@ app.post('/api/rag/embed', async (req, res) => {
   }
 })
 
+// Health check
+app.get('/api/rag/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    models: {
+      embedding: EMBED_MODEL,
+      llm: LLM_MODEL
+    }
+  })
+})
+
 const PORT = process.env.PORT || 3001
 app.listen(PORT, () => {
+  console.log(`\n========================================`)
   console.log(`RAG API server running on port ${PORT}`)
-  console.log(`Using model: ${process.env.OLLAMA_MODEL || 'llama3'}`)
-  console.log(`Ollama endpoint: ${process.env.OLLAMA_BASE_URL || 'http://localhost:11434'}`)
+  console.log(`========================================`)
+  console.log(`Embedding: ${EMBED_MODEL}`)
+  console.log(`LLM: ${LLM_MODEL}`)
+  console.log(`========================================\n`)
 })

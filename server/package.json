@@ -8,15 +8,16 @@
     "ingest": "tsx rag/ingest.ts",
     "seed": "tsx seed.ts",
     "test": "tsx test.ts",
-    "test:ask": "tsx test-ask.ts"
+    "test:ask": "tsx test-ask.ts",
+    "test:gemini": "tsx test-gemini.ts"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.104.1",
-    "@xenova/transformers": "^2.17.2",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.18.2",
-    "ollama": "^0.5.11"
+    "openai": "^4.80.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

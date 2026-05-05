@@ -1,9 +1,16 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_KEY!
-)
+// Safety check for environment variables
+const SUPABASE_URL = process.env.SUPABASE_URL
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+  throw new Error(
+    'Missing Supabase credentials. Please ensure SUPABASE_URL and SUPABASE_SERVICE_KEY are set in server/.env file.'
+  )
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 export interface SearchResult {
   id: string

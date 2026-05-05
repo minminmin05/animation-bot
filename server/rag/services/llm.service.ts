@@ -1,7 +1,7 @@
-import { Ollama } from 'ollama'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const ollama = new Ollama({ host: process.env.OLLAMA_BASE_URL || 'http://localhost:11434' })
-const MODEL = process.env.OLLAMA_MODEL || 'llama3'
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 
 export interface LLMSources {
   content?: string
@@ -41,16 +41,12 @@ Question: ${question}
   console.log(`[LLM] Generating answer for: "${question.slice(0, 50)}..."`)
 
   try {
-    const response = await ollama.chat({
-      model: MODEL,
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: userPrompt }
-      ],
-      stream: false
-    })
+    const model = genAI.getGenerativeModel({ model: MODEL })
 
-    const text = response.message.content || ''
+    const prompt = `${SYSTEM_PROMPT}\n\n${userPrompt}`
+
+    const response = await model.generateContent(prompt)
+    const text = response.response.text() || ''
 
     const emotion: LLMResponse['emotion'] = sources.length > 0 ? 'helpful' : 'concerned'
 

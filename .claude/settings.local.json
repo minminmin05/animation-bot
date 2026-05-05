@@ -23,7 +23,9 @@
       "Bash(findstr \"LISTENING\")",
       "Bash(curl -s http://localhost:11434/api/tags)",
       "Bash(curl *)",
-      "Bash(awk '{print $5}')"
+      "Bash(awk '{print $5}')",
+      "Bash(nslookup dyjszninfosvugpmmeh.supabase.co)",
+      "Bash(ping -n 1 dyjszninfosvugpmmeh.supabase.co)"
     ]
   },
   "enableAllProjectMcpServers": true,
