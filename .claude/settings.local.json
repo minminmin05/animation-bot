@@ -30,7 +30,14 @@
       "Skill(impeccable)",
       "Bash(timeout 5 cat \"C:\\\\Users\\\\dgkha\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--lumaid-school-management-app\\\\300d398a-9fd5-4901-9976-68324f78cc7f\\\\tasks\\\\b6846jgoj.output\")",
       "Bash(npx eslint *)",
-      "Bash(npx vite *)"
+      "Bash(npx vite *)",
+      "Bash(npx tsx *)",
+      "Bash(tsx test-vector-retrieval.ts)",
+      "Bash(npx kill-port *)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(powershell -Command \"Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(xargs grep *)",
+      "Bash(findstr /n \"_changed\")"
     ]
   },
   "enableAllProjectMcpServers": true,

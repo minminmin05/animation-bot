@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { AuthProvider } from './context/AuthContext'
 import { ProtectedRoute, PublicRoute } from './components/ProtectedRoute'
 import DashboardLayout from './layouts/DashboardLayout'
@@ -48,9 +49,14 @@ import CentralDashboard from './pages/central/CentralDashboard'
 import AIChatAssistant from './pages/admin/AIChatAssistant'
 import KnowledgeBaseManagement from './pages/admin/KnowledgeBaseManagement'
 
+// Settings
+import SystemSettings from './pages/admin/SystemSettings'
+import ErrorBoundary from './components/ErrorBoundary'
+
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-center" richColors closeButton />
       <Router>
         <Routes>
           {/* Public Routes */}
@@ -144,7 +150,11 @@ function App() {
             <Route path="student-grades" element={<StudentGradesAdmin />} />
             <Route path="ai-assistant" element={<AIChatAssistant />} />
             <Route path="knowledge-base" element={<KnowledgeBaseManagement />} />
-            <Route path="system" element={<div className="p-6"><h1 className="text-2xl font-bold">System Settings - Coming Soon</h1></div>} />
+            <Route path="settings" element={
+  <ErrorBoundary>
+    <SystemSettings />
+  </ErrorBoundary>
+} />
             <Route path="" element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
 

@@ -40,16 +40,45 @@ export interface AIResponse {
   emotion: 'neutral' | 'happy' | 'concerned' | 'helpful'
   tts: string
   sources: QueryResult[]
+  intent?: string
+  routing?: string
+  requiresAuth?: boolean
 }
 
-export async function askAI(question: string): Promise<AIResponse> {
+export interface UserContext {
+  userId?: string
+  userRole?: 'student' | 'teacher' | 'parent' | 'admin'
+}
+
+export async function askAI(question: string, userContext?: UserContext): Promise<AIResponse> {
   const response = await fetch(`${API_BASE}/api/rag/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question })
+    body: JSON.stringify({
+      question,
+      userId: userContext?.userId,
+      userRole: userContext?.userRole
+    })
   })
 
   if (!response.ok) throw new Error('Failed to get AI response')
+
+  return response.json()
+}
+
+// Test intent classification
+export async function testIntent(question: string, userContext?: UserContext) {
+  const response = await fetch(`${API_BASE}/api/rag/intent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      question,
+      userId: userContext?.userId,
+      userRole: userContext?.userRole
+    })
+  })
+
+  if (!response.ok) throw new Error('Failed to classify intent')
 
   return response.json()
 }

@@ -89,7 +89,7 @@ const navigationItems = [
   },
   {
     title: 'System Settings',
-    url: '/admin/system',
+    url: '/admin/settings',
     icon: Settings,
     roles: ['admin', 'owner'],
   },

@@ -1,6 +1,16 @@
 import React, { useState } from 'react'
 import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { askAI } from '../../services/embedding/embeddingService'
+import EmotionCharacter from '../../animation-showcase/EmotionCharacter'
+
+// Map old emotion names to new state names
+const emotionMap: Record<string, string> = {
+  'neutral': 'neutral',
+  'happy': 'positive',
+  'concerned': 'warning',
+  'helpful': 'informative'
+}
 
 const AIChatAssistant = () => {
   const [messages, setMessages] = useState([
@@ -12,9 +22,10 @@ const AIChatAssistant = () => {
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
-  const [emotion, setEmotion] = useState<'neutral' | 'happy' | 'concerned' | 'helpful'>('neutral')
+  // Default to "positive" - falls back to "positive" if emotion is undefined/null
+  const [emotion, setEmotion] = useState<string>('positive')
 
-  const handleSend = async (e) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!input.trim() || loading) return
 
@@ -27,11 +38,14 @@ const AIChatAssistant = () => {
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setLoading(true)
-    setEmotion('neutral')
+    // Show "positive" state while waiting for response
+    setEmotion('positive')
 
     try {
       const response = await askAI(input)
-      setEmotion(response.emotion)
+      // Map the response emotion to our state system, fallback to "positive"
+      const mappedEmotion = emotionMap[response.emotion] || 'positive'
+      setEmotion(mappedEmotion)
 
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
@@ -40,7 +54,8 @@ const AIChatAssistant = () => {
       }])
     } catch (error) {
       console.error('AI Error:', error)
-      setEmotion('concerned')
+      // Show "warning" state on error
+      setEmotion('warning')
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
         type: 'ai',
@@ -48,15 +63,6 @@ const AIChatAssistant = () => {
       }])
     } finally {
       setLoading(false)
-    }
-  }
-
-  const getEmotionIcon = () => {
-    switch (emotion) {
-      case 'happy': return '😊'
-      case 'concerned': return '🤔'
-      case 'helpful': return '💡'
-      default: return '😐'
     }
   }
 
@@ -70,24 +76,31 @@ const AIChatAssistant = () => {
         <div className="absolute top-10 left-10 w-32 h-32 bg-indigo-400/20 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-10 right-10 w-40 h-40 bg-purple-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
-        {/* Avatar with Emotion */}
-        <div className="relative z-10 flex flex-col items-center text-center">
-          <div className="w-48 h-48 border-4 border-dashed border-indigo-300 dark:border-indigo-700 rounded-full flex items-center justify-center mb-6 bg-white/50 dark:bg-black/20 backdrop-blur-sm">
-            <div className="text-indigo-400 dark:text-indigo-500 flex flex-col items-center">
-              {loading ? (
-                <Loader2 size={48} className="mb-2 animate-spin" />
-              ) : (
-                <>
-                  <span className="text-6xl mb-2">{getEmotionIcon()}</span>
-                  <Bot size={32} className="opacity-50" />
-                </>
-              )}
-            </div>
-          </div>
-          <h2 className="text-xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+        {/* Avatar with Emotion Character - Default to "positive" */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={emotion}
+            initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
+            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+            exit={{ opacity: 0, scale: 0.8, rotate: 5 }}
+            transition={{ duration: 0.3 }}
+            className="relative z-10"
+          >
+            <EmotionCharacter
+              state={emotion || 'positive'}
+              intensity={0.6}
+              size="xl"
+              showLabel={false}
+            />
+          </motion.div>
+        </AnimatePresence>
+
+        {/* Status Text */}
+        <div className="relative z-10 text-center mt-4">
+          <h2 className="text-xl font-bold text-navy flex items-center justify-center gap-2">
             AI Assistant <Sparkles className="w-5 h-5 text-yellow-500" />
           </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-[250px]">
+          <p className="text-sm text-text-secondary mt-2">
             {loading ? 'กำลังคิด...' : 'พร้อมตอบทุกคำถามเกี่ยวกับโรงเรียน'}
           </p>
         </div>
@@ -97,9 +110,9 @@ const AIChatAssistant = () => {
       <div className="w-full lg:w-2/3 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm flex flex-col overflow-hidden">
 
         {/* Chat Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-gray-50/50 dark:bg-gray-800/50">
-          <h3 className="font-semibold text-gray-800 dark:text-white">Knowledge Base Chat</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">ถามเรื่องอะไรก็ได้เกี่ยวกับข้อมูลโรงเรียน</p>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-cream/30 dark:bg-gray-800/50">
+          <h3 className="font-semibold text-navy">Knowledge Base Chat</h3>
+          <p className="text-xs text-text-muted">ถามเรื่องอะไรก็ได้เกี่ยวกับข้อมูลโรงเรียน</p>
         </div>
 
         {/* Messages */}
@@ -108,22 +121,22 @@ const AIChatAssistant = () => {
             <div key={msg.id} className={`flex gap-3 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
 
               {msg.type === 'ai' && (
-                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4 text-accent" />
                 </div>
               )}
 
               <div className={`max-w-[80%] rounded-2xl p-4 ${
                 msg.type === 'user'
-                  ? 'bg-blue-600 text-white rounded-tr-sm'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-sm'
+                  ? 'bg-navy text-white rounded-tr-sm'
+                  : 'bg-cream text-navy rounded-tl-sm border border-cream-dark'
               }`}>
                 <p className="text-sm leading-relaxed whitespace-pre-line">{msg.text}</p>
               </div>
 
               {msg.type === 'user' && (
-                <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <div className="w-8 h-8 rounded-full bg-navy/10 flex items-center justify-center flex-shrink-0">
+                  <User className="w-4 h-4 text-navy" />
                 </div>
               )}
             </div>
@@ -131,14 +144,14 @@ const AIChatAssistant = () => {
 
           {loading && (
             <div className="flex gap-3 justify-start">
-              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 flex items-center justify-center flex-shrink-0">
-                <Loader2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 animate-spin" />
+              <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
+                <Loader2 className="w-4 h-4 text-accent animate-spin" />
               </div>
-              <div className="bg-gray-100 dark:bg-gray-700 rounded-2xl rounded-tl-sm p-4">
+              <div className="bg-cream rounded-2xl rounded-tl-sm p-4 border border-cream-dark">
                 <div className="flex gap-1">
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100" />
-                  <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200" />
+                  <span className="w-2 h-2 bg-text-muted rounded-full animate-bounce" />
+                  <span className="w-2 h-2 bg-text-muted rounded-full animate-bounce delay-100" />
+                  <span className="w-2 h-2 bg-text-muted rounded-full animate-bounce delay-200" />
                 </div>
               </div>
             </div>
@@ -154,12 +167,12 @@ const AIChatAssistant = () => {
               onChange={(e) => setInput(e.target.value)}
               placeholder="ถามคำถาม..."
               disabled={loading}
-              className="w-full bg-gray-100 dark:bg-gray-900 border-none rounded-full py-3 pl-6 pr-14 text-sm focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all outline-none disabled:opacity-50"
+              className="w-full bg-cream border border-cream-dark rounded-full py-3 pl-6 pr-14 text-sm focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all outline-none disabled:opacity-50"
             />
             <button
               type="submit"
               disabled={!input.trim() || loading}
-              className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-full transition-colors flex items-center justify-center"
+              className="absolute right-2 p-2 bg-accent hover:bg-accent-hover disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-full transition-colors flex items-center justify-center"
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

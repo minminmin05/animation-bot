@@ -43,6 +43,25 @@ export async function insertKnowledgeBase(data: {
   if (error) throw error
 }
 
+export async function updateKnowledgeBaseEmbedding(id: string, embedding: number[]) {
+  const { error } = await supabase
+    .from('knowledge_base')
+    .update({ embedding })
+    .eq('id', id)
+
+  if (error) throw error
+}
+
+export async function getKnowledgeBaseWithNullEmbeddings() {
+  const { data, error } = await supabase
+    .from('knowledge_base')
+    .select('id, content, category')
+    .is('embedding', null)
+
+  if (error) throw error
+  return data
+}
+
 export async function searchByEmbedding(
   embedding: number[],
   limit: number = 3,
