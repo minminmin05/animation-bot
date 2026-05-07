@@ -10,7 +10,8 @@ const EmotionCharacter = ({
   state = 'positive',
   intensity = 0.5,
   size = 'md',
-  showLabel = false
+  showLabel = false,
+  mouthOpen = 0 // 0 = closed, 1 = wide open
 }) => {
   // Fallback to "positive" if state is undefined, null, or invalid
   const defaultState = state || 'positive'
@@ -144,16 +145,25 @@ const EmotionCharacter = ({
           <circle cx="32" cy="34" r="1.5" fill="#f0c4a0" opacity="0.5" />
 
           {/* Mouth */}
-          <motion.path
-            d={expression.mouth}
-            stroke="#c94a5a"
-            strokeWidth="1.5"
-            fill="none"
-            strokeLinecap="round"
-            initial={{ pathLength: 0 }}
-            animate={{ pathLength: 1 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-          />
+          <motion.g
+            animate={{ 
+              scaleY: 1 + mouthOpen * 1.5,
+              translateY: -mouthOpen * 1 // Adjust to keep center
+            }}
+            transition={{ type: 'spring', stiffness: 300, damping: 20 }}
+            style={{ originX: '32px', originY: '36px' }}
+          >
+            <motion.path
+              d={expression.mouth}
+              stroke="#c94a5a"
+              strokeWidth="1.5"
+              fill="none"
+              strokeLinecap="round"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 0.3, delay: 0.1 }}
+            />
+          </motion.g>
 
           {/* Blush (conditional) */}
           {config?.facial?.blush && (

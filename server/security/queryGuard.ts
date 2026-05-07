@@ -147,7 +147,7 @@ export function checkQuerySafety(
       return {
         safe: false,
         reason: 'BLOCKED_PATTERN',
-        message: 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลนี้ (You are not authorized to access this data)'
+        message: 'ขออภัย เราไม่สามารถตอบได้เนื่องจากเป็นการละเมิดข้อมูลส่วนบุคคล (Unauthorized access to personal data)'
       }
     }
   }
@@ -198,7 +198,7 @@ export function checkQuerySafety(
         return {
           safe: false,
           reason: 'OTHER_PERSON_DATA',
-          message: 'คุณสามารถดูเฉพาะข้อมูลของตัวเองเท่านั้น (You can only view your own data)'
+          message: 'ขออภัย เราไม่สามารถตอบได้เนื่องจากเป็นการละเมิดข้อมูลส่วนบุคคล (Privacy policy: You can only view your own data)'
         }
       }
     }

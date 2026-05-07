@@ -371,10 +371,10 @@ export async function regenerateEmbeddings(req: Request, res: Response) {
     console.log('[Settings API] Regenerating with config:', config)
 
     // Import and run regeneration
-    const { regenerate } = await import('../rag/ingest.js')
+    const { regenerateEmbeddings } = await import('../rag/ingest.js')
 
     // Start regeneration in background
-    regenerate().then((result) => {
+    regenerateEmbeddings().then((result) => {
       console.log(`[Settings API] Regeneration complete: ${result.regenerated} embeddings`)
     }).catch((error) => {
       console.error('[Settings API] Regeneration failed:', error)

@@ -1,3 +1,8 @@
+import { GoogleGenerativeAI } from '@google/generative-ai'
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
+const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp'
+
 // Intent categories for query routing
 export enum Intent {
   KNOWLEDGE = 'knowledge',         // Policies, rules, general info → use RAG
@@ -48,7 +53,8 @@ const INTENT_PATTERNS = {
     /ภาคเรียน|ไตรา|งาน/,
     /วิธี(ลงทะเบียน|เรียน|ทำ)/,
     /เกรดเฉลี่ย|คำนวณ.*เกรด|gpa.*/i,
-    /วิชา(อะไร|ไหน)/
+    /วิชา(อะไร|ไหน)/,
+    /มีสิทธิ์|สิทธิ์|แก้ตัว|กี่ครั้ง|ได้กี่/
   ],
 
   // PERSONAL_DATA: grades, attendance, personal info
@@ -286,7 +292,7 @@ export async function classifyIntentWithLLM(
   userContext?: UserContext
 ): Promise<IntentClassification> {
   try {
-    const { generateText } = await import('@ai-sdk/openai')
+    const model = genAI.getGenerativeModel({ model: MODEL })
 
     const prompt = `You are an intent classifier for a school management AI assistant.
 
@@ -294,7 +300,7 @@ Classify the user's query into ONE of these categories:
 
 1. KNOWLEDGE - General information, policies, rules, FAQs, explanations
    Examples: "What is the dress code?", "How do I register?", "When is spring break?", "How is GPA calculated?"
-   Thai: "กฎเครื่องแบบคืออะไร", "เกรดเฉลี่ยคืออะไร"
+   Thai: "กฎเครื่องแบบคืออะไร", "เกรดเฉลี่ยคืออะไร", "สอบแก้ตัวได้กี่ครั้ง"
 
 2. PERSONAL_DATA - User-specific data (their own grades, attendance, schedule)
    Examples: "What are my grades?", "Show my attendance", "How am I doing?", "My GPA"
@@ -311,16 +317,11 @@ User role: ${userContext?.role || 'unknown'}
 
 Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, AMBIGUOUS, or UNKNOWN). No other text.`
 
-    const result = await generateText({
-      model: 'gpt-4o-mini',
-      prompt,
-      temperature: 0,
-      maxTokens: 20
-    })
-
-    const intentLabel = result.text.trim().toUpperCase()
-    const intent = Object.values(Intent).includes(intentLabel as Intent)
-      ? intentLabel as Intent
+    const result = await model.generateContent(prompt)
+    const intentLabel = result.response.text().trim().toUpperCase()
+    
+    const intent = Object.values(Intent).includes(intentLabel.toLowerCase() as Intent)
+      ? intentLabel.toLowerCase() as Intent
       : Intent.UNKNOWN
 
     // High confidence for LLM-based classification
@@ -333,7 +334,7 @@ Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, AMBIGUOUS, or UNKNOWN). 
     return {
       intent,
       confidence,
-      reasoning: 'LLM-based classification',
+      reasoning: 'LLM-based classification (Gemini)',
       suggestedAction: intent === Intent.PERSONAL_DATA
         ? 'Query database with user authentication'
         : intent === Intent.KNOWLEDGE

@@ -75,7 +75,13 @@ Question: ${question}
     const prompt = `${SYSTEM_PROMPT}\n\n${userPrompt}`
 
     const response = await model.generateContent(prompt)
-    const text = response.response.text() || ''
+    let text = response.response.text() || ''
+
+    // Prevent empty responses
+    if (!text.trim()) {
+      console.log('[LLM] Received empty response from AI, using fallback')
+      text = 'ขออภัย ระบบไม่สามารถสรุปข้อมูลได้ในขณะนี้ กรุณาลองถามใหม่อีกครั้งค่ะ/ครับ'
+    }
 
     const emotion: LLMResponse['emotion'] = personalDataContext
       ? 'happy' // Positive emotion for personal data

@@ -18,6 +18,7 @@ import {
   getRegenerationStatus
 } from './api/settings.controller.js'
 import { testEmbeddingSimilarity } from './api/embedding-test.controller.js'
+import { generateSpeech } from './api/tts.controller.js'
 import {
   getAccessPolicies,
   updateAccessPolicy,
@@ -111,7 +112,7 @@ app.post('/api/rag/ask', async (req, res) => {
       return res.json({
         intent: intentResult.intent,
         requiresClarification: true,
-        message: intentResult.clarificationQuestion || 'Could you please clarify your question?',
+        text: intentResult.clarificationQuestion || 'Could you please clarify your question?',
         suggestions: {
           knowledge: `Ask about "${question}" in general (policies, rules, how it works)`,
           personal: `Ask about your own "${question}" (your grades, attendance, schedule)`
@@ -131,7 +132,7 @@ app.post('/api/rag/ask', async (req, res) => {
         return res.json({
           intent: intentResult.intent,
           requiresAuth: true,
-          message: 'กรุณาเข้าสู่ระบบก่อน (Please login first)',
+          text: 'กรุณาเข้าสู่ระบบก่อน (Please login first)',
           emotion: 'concerned'
         })
       }
@@ -155,7 +156,7 @@ app.post('/api/rag/ask', async (req, res) => {
           return res.json({
             intent: intentResult.intent,
             type: 'personal_data',
-            message: 'ไม่พบข้อมูลของคุณในระบบ (No data found for you in the system)',
+            text: 'ไม่พบข้อมูลของคุณในระบบ (No data found for you in the system)',
             emotion: 'helpful'
           })
         }
@@ -203,7 +204,7 @@ app.post('/api/rag/ask', async (req, res) => {
           return res.json({
             intent: intentResult.intent,
             error: 'UNAUTHORIZED',
-            message: 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลนี้ (You are not authorized to access this data)',
+            text: 'คุณไม่มีสิทธิ์เข้าถึงข้อมูลนี้ (You are not authorized to access this data)',
             emotion: 'concerned'
           })
         }
@@ -221,7 +222,7 @@ app.post('/api/rag/ask', async (req, res) => {
     if (intentResult.intent === Intent.UNKNOWN) {
       return res.json({
         intent: intentResult.intent,
-        message: 'ฉันไม่แน่ใจว่าคุณถามเกี่ยวกับอะไร (I\'m not sure what you\'re asking about)',
+        text: 'ฉันไม่แน่ใจว่าคุณถามเกี่ยวกับอะไร (I\'m not sure what you\'re asking about)',
         suggestion: 'คุณสามารถถามเกี่ยวกับ: กฎของโรงเรียน, วันหยุด, หรือข้อมูลการลงทะเบียน',
         examples: [
           'กฎเครื่องแบบคืออะไร? (What is the dress code policy?)',
@@ -347,6 +348,9 @@ app.post('/api/rag/intent', async (req, res) => {
     }
   })
 })
+
+// TTS API
+app.post('/api/tts/generate', generateSpeech)
 
 // Health check
 app.get('/api/rag/health', (req, res) => {
