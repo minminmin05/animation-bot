@@ -5,11 +5,36 @@
 
 import { useState, useEffect, Suspense, lazy } from 'react'
 import { motion } from 'framer-motion'
-import { Settings as SettingsIcon, Bell, Palette, Shield, Database, Brain, AlertTriangle, RefreshCw, Check, Info, Lock, RotateCcw, Save } from 'lucide-react'
+import { Settings as SettingsIcon, Bell, Palette, Shield, Database, Brain, AlertTriangle, RefreshCw, Check, Info, Lock, RotateCcw, Save, Volume2, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { centralSupabase as supabase } from '@/integrations/supabase/central-client'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+
+// TTS provider options
+const TTS_PROVIDERS = {
+  botnoi: {
+    id: 'botnoi',
+    name: 'Botnoi Voice',
+    description: 'เสียงภาษาไทยคุณภาพสูง พร้อมรองรับอารมณ์',
+    thaiDescription: 'ระบบเสียงสังเคราะห์ภาษาไทยที่มีความเป็นธรรมชาติสูง รองรับการเลือกเสียงตามอารมณ์ (Happy, Concerned, etc.)',
+    badge: 'แนะนำ'
+  },
+  google: {
+    id: 'google',
+    name: 'Google Cloud TTS',
+    description: 'Standard Google Text-to-Speech',
+    thaiDescription: 'ระบบเสียงจาก Google Cloud (Coming Soon)',
+    badge: 'เสถียร'
+  },
+  openai: {
+    id: 'openai',
+    name: 'OpenAI TTS',
+    description: 'Natural sounding voices from OpenAI',
+    thaiDescription: 'เสียงจาก OpenAI ที่มีความเป็นธรรมชาติสูงมาก (Coming Soon)',
+    badge: 'พรีเมียม'
+  }
+}
 
 // Lazy load animation components to prevent white screen on load
 const EmotionCharacter = lazy(() => import('../../animation-showcase/EmotionCharacter.jsx'))
@@ -65,6 +90,11 @@ const SystemSettings = () => {
   const [hasChanges, setHasChanges] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
 
+  // TTS settings state
+  const [ttsProvider, setTtsProvider] = useState('botnoi')
+  const [ttsLoading, setTtsLoading] = useState(false)
+  const [savingTts, setSavingTts] = useState(false)
+
   // Embedding test state
   const [testTexts, setTestTexts] = useState([
     'นักเรียนทุกคนต้องสวมเครื่องแบบนักเรียนเพื่อความเป็นระเบียบเรียบร้อย',
@@ -104,6 +134,49 @@ const SystemSettings = () => {
       toast.error(`ไม่สามารถดึงข้อมูลการตั้งค่าได้: ${error.message}`)
     } finally {
       setEmbeddingLoading(false)
+    }
+  }
+
+  // Fetch current TTS settings
+  useEffect(() => {
+    fetchTtsSettings()
+  }, [])
+
+  const fetchTtsSettings = async () => {
+    try {
+      setTtsLoading(true)
+      const response = await fetch(`${API_BASE}/api/settings`)
+      if (response.ok) {
+        const data = await response.json()
+        setTtsProvider(data.tts?.provider || 'botnoi')
+      }
+    } catch (error) {
+      console.error('[Frontend] Failed to fetch TTS settings:', error)
+    } finally {
+      setTtsLoading(false)
+    }
+  }
+
+  const handleTtsProviderChange = async (providerId) => {
+    if (providerId === ttsProvider) return
+
+    try {
+      setSavingTts(true)
+      const response = await fetch(`${API_BASE}/api/settings/tts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: providerId })
+      })
+
+      if (!response.ok) throw new Error('Failed to update TTS provider')
+
+      setTtsProvider(providerId)
+      toast.success(`เปลี่ยนโมเดลเสียงเป็น ${TTS_PROVIDERS[providerId].name} สำเร็จ`)
+    } catch (error) {
+      console.error('[Frontend] Error updating TTS provider:', error)
+      toast.error('ไม่สามารถเปลี่ยนโมเดลเสียงได้')
+    } finally {
+      setSavingTts(false)
     }
   }
 
@@ -370,6 +443,7 @@ const SystemSettings = () => {
   const tabs = [
     { id: 'general', label: 'ทั่วไป', icon: SettingsIcon },
     { id: 'embedding', label: 'Embedding', icon: Brain },
+    { id: 'tts', label: 'เสียงสังเคราะห์ (TTS)', icon: Volume2 },
     { id: 'animation', label: 'แอนิเมชัน', icon: Palette },
     { id: 'notifications', label: 'การแจ้งเตือน', icon: Bell },
     { id: 'access-control', label: 'การควบคุมการเข้าถึง', icon: Lock },
@@ -738,6 +812,92 @@ const SystemSettings = () => {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {activeTab === 'tts' && (
+          <div className="space-y-6">
+            <div className="card">
+              <div className="p-6 border-b border-cream-dark">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
+                    <Volume2 className="w-5 h-5 text-accent" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-display font-semibold text-navy">
+                      ตั้งค่าเสียงสังเคราะห์ (TTS)
+                    </h2>
+                    <p className="text-sm text-text-muted">
+                      เลือกโมเดลเสียงสำหรับผู้ช่วย AI Assistant
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {ttsLoading ? (
+              <div className="card">
+                <div className="p-8 text-center">
+                  <RefreshCw className="w-8 h-8 text-navy mx-auto mb-3 animate-spin" />
+                  <p className="text-text-muted">กำลังโหลดข้อมูล...</p>
+                </div>
+              </div>
+            ) : (
+              <div className="card">
+                <div className="p-6 border-b border-cream-dark">
+                  <h3 className="text-base font-display font-semibold text-navy">
+                    เลือกโมเดลเสียง
+                  </h3>
+                </div>
+                <div className="p-6 space-y-4">
+                  {Object.values(TTS_PROVIDERS).map((provider) => (
+                    <motion.button
+                      key={provider.id}
+                      onClick={() => !savingTts && handleTtsProviderChange(provider.id)}
+                      disabled={savingTts}
+                      className={`w-full text-left p-5 rounded-xl border-2 transition-all ${
+                        ttsProvider === provider.id
+                          ? 'border-accent bg-accent/5'
+                          : 'border-cream-dark hover:border-accent/30 hover:bg-cream/20'
+                      } ${savingTts ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      whileHover={!savingTts ? { scale: 1.01 } : {}}
+                      whileTap={!savingTts ? { scale: 0.99 } : {}}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold text-navy">{provider.name}</h4>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              provider.id === 'botnoi' ? 'bg-sage/20 text-sage-dark' : 'bg-gray-100 text-gray-500'
+                            }`}>
+                              {provider.badge}
+                            </span>
+                          </div>
+                          <p className="text-sm text-text-secondary">{provider.thaiDescription}</p>
+                        </div>
+                        {ttsProvider === provider.id && (
+                          <div className="w-6 h-6 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
+                            <Check size={14} className="text-white" strokeWidth={3} />
+                          </div>
+                        )}
+                        {savingTts && ttsProvider !== provider.id && (
+                          <Loader2 size={16} className="animate-spin text-accent" />
+                        )}
+                      </div>
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="bg-cream/30 rounded-2xl p-6 border border-cream-dark border-dashed">
+              <h4 className="text-sm font-semibold text-navy mb-2 flex items-center gap-2">
+                <Info size={14} className="text-accent" /> ข้อมูลเพิ่มเติม
+              </h4>
+              <p className="text-sm text-text-secondary leading-relaxed">
+                การเปลี่ยนโมเดลเสียงจะมีผลทันทีกับ AI Assistant ทุกตัวในระบบ สำหรับโมเดลที่ขึ้นว่า "Coming Soon" จะมีการอัปเดตให้ใช้งานได้ในเวอร์ชันถัดไปเมื่อระบบ API พร้อมรองรับ
+              </p>
+            </div>
           </div>
         )}
 

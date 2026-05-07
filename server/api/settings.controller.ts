@@ -10,7 +10,7 @@ const CACHE_TTL = 60000 // 1 minute
 /**
  * Get system settings from database
  */
-async function getSystemSettings() {
+export async function getSystemSettings() {
   // Check cache first
   if (settingsCache && Date.now() < cacheExpiry) {
     return settingsCache
@@ -129,6 +129,9 @@ export async function getSettings(req: Request, res: Response) {
         provider: embedConfig.provider,
         modelName: embedConfig.modelName,
         dimensions: embedConfig.dimensions
+      },
+      tts: {
+        provider: systemSettings.tts_provider || 'botnoi'
       },
       notifications: notificationSettings
     })
@@ -414,5 +417,69 @@ export async function getRegenerationStatus(req: Request, res: Response) {
   } catch (error) {
     console.error('[Settings API] Error getting status:', error)
     res.status(500).json({ error: 'Failed to get status' })
+  }
+}
+
+/**
+ * Update TTS settings
+ */
+export async function updateTtsSettings(req: Request, res: Response) {
+  try {
+    const { provider } = req.body
+
+    console.log('[Settings API] POST /api/settings/tts')
+    console.log('[Settings API] Request body:', { provider })
+
+    // Verify user is admin
+    const authHeader = req.headers.authorization
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+
+    const token = authHeader.replace('Bearer ', '')
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid token' })
+    }
+
+    // Check if user is admin
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    if (!profile || !['admin', 'owner'].includes(profile.role)) {
+      return res.status(403).json({ error: 'Forbidden - Admin only' })
+    }
+
+    // Update settings
+    const { error } = await supabase
+      .from('system_settings')
+      .update({
+        tts_provider: provider,
+        updated_by: user.id
+      })
+      .eq('id', 'settings')
+
+    if (error) {
+      throw error
+    }
+
+    // Clear cache
+    settingsCache = null
+    cacheExpiry = 0
+
+    res.json({
+      success: true,
+      message: 'TTS settings updated successfully',
+      tts: {
+        provider
+      }
+    })
+  } catch (error) {
+    console.error('[Settings API] Error updating TTS settings:', error)
+    res.status(500).json({ error: 'Failed to update TTS settings', message: String(error) })
   }
 }

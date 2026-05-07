@@ -14,6 +14,7 @@ import {
   updateThemeSettings,
   updateNotificationSettings,
   updateEmbeddingProvider,
+  updateTtsSettings,
   regenerateEmbeddings,
   getRegenerationStatus
 } from './api/settings.controller.js'
@@ -306,6 +307,7 @@ app.post('/api/settings/general', updateGeneralSettings)
 app.post('/api/settings/theme', updateThemeSettings)
 app.post('/api/settings/notifications', updateNotificationSettings)
 app.post('/api/settings/embedding', updateEmbeddingProvider)
+app.post('/api/settings/tts', updateTtsSettings)
 app.post('/api/embeddings/regenerate', regenerateEmbeddings)
 app.get('/api/embeddings/regenerate/status', getRegenerationStatus)
 
