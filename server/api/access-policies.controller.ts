@@ -24,18 +24,23 @@ async function getUserRoleFromRequest(req: Request): Promise<{ userId?: string; 
   const authHeader = req.headers.authorization
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    console.log('[Access Policies API] ❌ No auth header found')
     return null
   }
 
   const token = authHeader.substring(7)
+  console.log('[Access Policies API] 🔐 Token found, verifying...')
 
   try {
     // Verify the token with Supabase
     const { data, error } = await getSupabase().auth.getUser(token)
 
     if (error || !data.user) {
+      console.error('[Access Policies API] ❌ Token verification failed:', error?.message)
       return null
     }
+
+    console.log('[Access Policies API] ✅ Token verified, user ID:', data.user.id)
 
     // Get user's role from users table
     const { data: userData, error: userError } = await getSupabase()
@@ -45,15 +50,19 @@ async function getUserRoleFromRequest(req: Request): Promise<{ userId?: string; 
       .single()
 
     if (userError || !userData) {
+      console.error('[Access Policies API] ❌ Role lookup failed:', userError?.message)
+      console.log('[Access Policies API] User not found in public.users table or error occurred')
       return null
     }
+
+    console.log('[Access Policies API] ✅ User role found:', userData.role)
 
     return {
       userId: data.user.id,
       userRole: userData.role
     }
   } catch (error) {
-    console.error('[Access Policies API] Error verifying token:', error)
+    console.error('[Access Policies API] ❌ Error verifying token:', error)
     return null
   }
 }

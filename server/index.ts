@@ -231,9 +231,11 @@ app.post('/api/rag/ask', async (req, res) => {
     }
 
     // Handle KNOWLEDGE intent - proceed with RAG
+    console.log(`[API] Generating embedding...`)
     const embedding = await generateEmbedding(question)
     console.log(`[API] Embedding generated: dim=${embedding.length}`)
 
+    console.log(`[API] Searching knowledge base...`)
     const sources = await searchByEmbedding(embedding, 5, 0.4)
     console.log(`[API] Search returned ${sources.length} results`)
     if (sources.length > 0) {
@@ -242,7 +244,9 @@ app.post('/api/rag/ask', async (req, res) => {
       })
     }
 
+    console.log(`[API] Generating answer with LLM...`)
     const answer = await generateAnswer(question, sources)
+    console.log(`[API] Answer generated successfully`)
 
     console.log(`[API] Returning answer\n`)
 
@@ -253,8 +257,18 @@ app.post('/api/rag/ask', async (req, res) => {
       confidence: intentResult.confidence
     })
   } catch (error) {
-    console.error('[API] Error:', error)
-    res.status(500).json({ error: 'Internal server error' })
+    console.error('[API] Error details:')
+    console.error('  Error type:', error instanceof Error ? error.constructor.name : typeof error)
+    console.error('  Error message:', error instanceof Error ? error.message : String(error))
+    console.error('  Error stack:', error instanceof Error ? error.stack : 'No stack trace')
+    
+    // Return error in format that frontend expects
+    res.status(500).json({
+      text: 'ขออภัย ระบบไม่สามารถตอบได้ในขณะนี้ กรุณาลองใหม่ภายหลัง',
+      emotion: 'warning',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      type: 'error'
+    })
   }
 })
 

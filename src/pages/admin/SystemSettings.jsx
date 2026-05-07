@@ -221,25 +221,34 @@ const SystemSettings = () => {
         return
       }
 
+      console.log('[Frontend] Session user:', session.user?.email)
+      console.log('[Frontend] API_BASE:', API_BASE)
+
       const response = await fetch(`${API_BASE}/api/access-policies`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`
         }
       })
 
+      console.log('[Frontend] Response status:', response.status)
+      const responseText = await response.text()
+      console.log('[Frontend] Response body:', responseText)
+
       if (!response.ok) {
         if (response.status === 401) {
           toast.error('กรุณาเข้าสู่ระบบใหม่')
+          console.error('[Frontend] 401 Unauthorized - token invalid or expired')
           return
         }
         if (response.status === 403) {
           toast.error('คุณไม่มีสิทธิ์เข้าถึงการตั้งค่านี้')
+          console.error('[Frontend] 403 Forbidden - user role is not admin')
           return
         }
-        throw new Error('Failed to fetch access policies')
+        throw new Error(`Failed to fetch access policies: ${response.status}`)
       }
 
-      const data = await response.json()
+      const data = JSON.parse(responseText)
       console.log('[Frontend] Policies fetched:', data.policies?.length || 0)
       setPolicies((data.policies || []).map(p => ({ ...p, _changed: false })))
     } catch (error) {

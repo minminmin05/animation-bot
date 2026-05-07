@@ -81,7 +81,7 @@ async function getNotificationSettings(userId: string) {
 /**
  * Update user notification settings
  */
-async function updateNotificationSettings(userId: string, settings: Record<string, boolean>) {
+async function saveNotificationSettings(userId: string, settings: Record<string, boolean>) {
   const updates = Object.entries(settings).map(([key, enabled]) => {
     return supabase
       .from('notification_settings')
@@ -163,7 +163,7 @@ export async function updateGeneralSettings(req: Request, res: Response) {
 
     // Check if user is admin
     const { data: profile } = await supabase
-      .from('user_profiles')
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single()
@@ -233,7 +233,7 @@ export async function updateThemeSettings(req: Request, res: Response) {
 
     // Check if user is admin
     const { data: profile } = await supabase
-      .from('user_profiles')
+      .from('users')
       .select('role')
       .eq('id', user.id)
       .single()
@@ -297,7 +297,7 @@ export async function updateNotificationSettings(req: Request, res: Response) {
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    await updateNotificationSettings(user.id, settings)
+    await saveNotificationSettings(user.id, settings)
 
     res.json({
       success: true,
