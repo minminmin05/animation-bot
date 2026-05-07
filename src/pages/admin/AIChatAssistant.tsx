@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { askAI } from '../../services/embedding/embeddingService'
@@ -35,19 +35,29 @@ const AIChatAssistant = () => {
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
   const mouthOpen = useLipSync(audioEl)
 
-  // Sync typing with audio time
+  // Sync typing with audio time using requestAnimationFrame for smoothness
   useEffect(() => {
     if (!audioEl || !isTyping || !fullResponseText) return;
 
-    const handleTimeUpdate = () => {
+    let rafId: number;
+
+    const updateTyping = () => {
       if (audioEl.duration > 0) {
         const progress = audioEl.currentTime / audioEl.duration;
-        const charCount = Math.floor(progress * fullResponseText.length);
-        setTypingText(fullResponseText.substring(0, charCount));
+        // Calculate characters based on progress
+        const charCount = Math.ceil(progress * fullResponseText.length);
+        
+        // Only update if character count has changed to avoid unnecessary renders
+        setTypingText(fullResponseText.substring(0, Math.max(1, charCount)));
+      }
+      
+      if (isTyping) {
+        rafId = requestAnimationFrame(updateTyping);
       }
     };
 
     const handleEnded = () => {
+      cancelAnimationFrame(rafId);
       // Ensure full text is shown at the end
       setTypingText(fullResponseText);
       
@@ -64,11 +74,11 @@ const AIChatAssistant = () => {
       setFullResponseText('');
     };
 
-    audioEl.addEventListener('timeupdate', handleTimeUpdate);
+    rafId = requestAnimationFrame(updateTyping);
     audioEl.addEventListener('ended', handleEnded);
 
     return () => {
-      audioEl.removeEventListener('timeupdate', handleTimeUpdate);
+      cancelAnimationFrame(rafId);
       audioEl.removeEventListener('ended', handleEnded);
     };
   }, [audioEl, isTyping, fullResponseText]);
