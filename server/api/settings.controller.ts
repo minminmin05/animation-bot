@@ -430,6 +430,16 @@ export async function updateTtsSettings(req: Request, res: Response) {
     console.log('[Settings API] POST /api/settings/tts')
     console.log('[Settings API] Request body:', { provider })
 
+    // Validate provider
+    const validProviders = ['botnoi', 'edge']
+    if (!provider || !validProviders.includes(provider)) {
+      console.error('[Settings API] Invalid provider:', provider)
+      return res.status(400).json({
+        error: 'Invalid provider',
+        message: `Provider must be one of: ${validProviders.join(', ')}`
+      })
+    }
+
     // Verify user is admin
     const authHeader = req.headers.authorization
     if (!authHeader) {
@@ -475,7 +485,8 @@ export async function updateTtsSettings(req: Request, res: Response) {
       success: true,
       message: 'TTS settings updated successfully',
       tts: {
-        provider
+        provider,
+        availableProviders: validProviders
       }
     })
   } catch (error) {

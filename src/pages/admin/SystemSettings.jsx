@@ -20,6 +20,13 @@ const TTS_PROVIDERS = {
     thaiDescription: 'ระบบเสียงสังเคราะห์ภาษาไทยที่มีความเป็นธรรมชาติสูง รองรับการเลือกเสียงตามอารมณ์ (Happy, Concerned, etc.)',
     badge: 'แนะนำ'
   },
+  edge: {
+    id: 'edge',
+    name: 'Edge-TTS (Microsoft)',
+    description: 'เสียงภาษาไทยฟรีจาก Microsoft Edge',
+    thaiDescription: 'ระบบเสียงสังเคราะห์จาก Microsoft Edge รองรับเสียงภาษาไทยชายและหญิง ใช้งานได้ฟรีไม่ต้องมี API Key',
+    badge: 'ฟรี'
+  },
   google: {
     id: 'google',
     name: 'Google Cloud TTS',
@@ -94,6 +101,11 @@ const SystemSettings = () => {
   const [ttsProvider, setTtsProvider] = useState('botnoi')
   const [ttsLoading, setTtsLoading] = useState(false)
   const [savingTts, setSavingTts] = useState(false)
+  const [ttsTestText, setTtsTestText] = useState('สวัสดีครับ ยินดีต้อนรับสู่โรงเรียนลุมายด์')
+  const [ttsTesting, setTtsTesting] = useState(false)
+  const [ttsTestResult, setTtsTestResult] = useState(null)
+  const [ttsHealth, setTtsHealth] = useState(null)
+  const [checkingHealth, setCheckingHealth] = useState(false)
 
   // Embedding test state
   const [testTexts, setTestTexts] = useState([
@@ -177,6 +189,92 @@ const SystemSettings = () => {
       toast.error('ไม่สามารถเปลี่ยนโมเดลเสียงได้')
     } finally {
       setSavingTts(false)
+    }
+  }
+
+  const runTtsTest = async () => {
+    if (!ttsTestText.trim()) {
+      toast.error('กรุณากรอกข้อความทดสอบ')
+      return
+    }
+
+    setTtsTesting(true)
+    setTtsTestResult(null)
+
+    try {
+      const startTime = Date.now()
+      const response = await fetch(`${API_BASE}/api/tts/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: ttsTestText, emotion: 'neutral' })
+      })
+      const latency = Date.now() - startTime
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || 'Failed to generate speech')
+      }
+
+      const audioBlob = await response.blob()
+      const audioUrl = URL.createObjectURL(audioBlob)
+
+      setTtsTestResult({
+        success: true,
+        audioUrl,
+        latency,
+        size: audioBlob.size,
+        provider: TTS_PROVIDERS[ttsProvider]?.name || ttsProvider
+      })
+
+      toast.success('ทดสอบเสียงสำเร็จ')
+    } catch (error) {
+      console.error('TTS test error:', error)
+      setTtsTestResult({
+        success: false,
+        error: error.message
+      })
+      toast.error(`ทดสอบเสียงล้มเหลว: ${error.message}`)
+    } finally {
+      setTtsTesting(false)
+    }
+  }
+
+  const checkTtsHealth = async () => {
+    setCheckingHealth(true)
+    setTtsHealth(null)
+
+    try {
+      const response = await fetch(`${API_BASE}/api/tts/health`)
+
+      if (!response.ok) {
+        throw new Error('Failed to check provider health')
+      }
+
+      const data = await response.json()
+      setTtsHealth(data)
+    } catch (error) {
+      console.error('Health check error:', error)
+      toast.error('ไม่สามารถตรวจสอบสถานะ Provider ได้')
+    } finally {
+      setCheckingHealth(false)
+    }
+  }
+
+  const resetTtsHealth = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/tts/health/reset`, {
+        method: 'POST'
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to reset provider health')
+      }
+
+      toast.success('รีเซ็ตสถานะ Provider สำเร็จ')
+      checkTtsHealth()
+    } catch (error) {
+      console.error('Reset error:', error)
+      toast.error('ไม่สามารถรีเซ็ตสถานะ Provider ได้')
     }
   }
 
@@ -868,7 +966,9 @@ const SystemSettings = () => {
                           <div className="flex items-center gap-2 mb-2">
                             <h4 className="font-semibold text-navy">{provider.name}</h4>
                             <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              provider.id === 'botnoi' ? 'bg-sage/20 text-sage-dark' : 'bg-gray-100 text-gray-500'
+                              provider.id === 'botnoi' ? 'bg-sage/20 text-sage-dark' :
+                              provider.id === 'edge' ? 'bg-blue/20 text-blue-dark' :
+                              'bg-gray-100 text-gray-500'
                             }`}>
                               {provider.badge}
                             </span>
@@ -889,7 +989,217 @@ const SystemSettings = () => {
                 </div>
               </div>
             )}
-            
+
+            {/* TTS Test Section */}
+            <div className="card">
+              <div className="p-6 border-b border-cream-dark">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue/10 rounded-xl flex items-center justify-center">
+                    <Volume2 className="w-5 h-5 text-blue-dark" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-semibold text-navy">
+                      ทดสอบเสียงสังเคราะห์
+                    </h3>
+                    <p className="text-sm text-text-muted">
+                      ทดสอบ TTS provider ที่เลือก
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-navy mb-2">
+                    ข้อความทดสอบ
+                  </label>
+                  <input
+                    type="text"
+                    value={ttsTestText}
+                    onChange={(e) => setTtsTestText(e.target.value)}
+                    placeholder="กรอกข้อความที่ต้องการทดสอบเสียง"
+                    className="input-field"
+                    disabled={ttsTesting}
+                  />
+                </div>
+
+                <button
+                  onClick={runTtsTest}
+                  disabled={ttsTesting || !ttsTestText.trim()}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                    ttsTesting || !ttsTestText.trim()
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-blue-dark text-white hover:bg-blue shadow-medium'
+                  }`}
+                >
+                  {ttsTesting ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" strokeWidth={2} />
+                      กำลังสร้างเสียง...
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 size={16} strokeWidth={2} />
+                      ทดสอบเสียง
+                    </>
+                  )}
+                </button>
+
+                {/* Test Result */}
+                {ttsTestResult && (
+                  <div className={`rounded-xl p-4 border-2 ${
+                    ttsTestResult.success
+                      ? 'bg-sage/10 border-sage/30'
+                      : 'bg-red-50 border-red-200'
+                  }`}>
+                    {ttsTestResult.success ? (
+                      <>
+                        <div className="flex items-center gap-2 mb-3">
+                          <Check size={16} className="text-sage-dark" strokeWidth={3} />
+                          <span className="font-medium text-navy">ทดสอบสำเร็จ</span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm mb-3">
+                          <div>
+                            <p className="text-text-muted">Provider</p>
+                            <p className="font-medium text-navy">{ttsTestResult.provider}</p>
+                          </div>
+                          <div>
+                            <p className="text-text-muted">เวลา</p>
+                            <p className="font-medium text-navy">{ttsTestResult.latency}ms</p>
+                          </div>
+                          <div>
+                            <p className="text-text-muted">ขนาด</p>
+                            <p className="font-medium text-navy">{(ttsTestResult.size / 1024).toFixed(1)} KB</p>
+                          </div>
+                          <div>
+                            <p className="text-text-muted">สถานะ</p>
+                            <p className="font-medium text-sage-dark">ปกติ</p>
+                          </div>
+                        </div>
+                        <audio
+                          controls
+                          src={ttsTestResult.audioUrl}
+                          className="w-full"
+                          onError={() => toast.error('ไม่สามารถเล่นไฟล์เสียงได้')}
+                        />
+                      </>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle size={16} className="text-red-600" strokeWidth={2} />
+                        <span className="text-red-900">ทดสอบล้มเหลว: {ttsTestResult.error}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Provider Health Status */}
+            <div className="card">
+              <div className="p-6 border-b border-cream-dark">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-sage/10 rounded-xl flex items-center justify-center">
+                      <Check size={20} className="text-sage-dark" strokeWidth={2} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-display font-semibold text-navy">
+                        สถานะ TTS Providers
+                      </h3>
+                      <p className="text-sm text-text-muted">
+                        ตรวจสอบสถานะความพร้อมของแต่ละ Provider
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={resetTtsHealth}
+                      className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border border-cream-dark text-navy hover:bg-cream/20 transition-colors"
+                    >
+                      <RotateCcw size={14} strokeWidth={2} />
+                      รีเซ็ต
+                    </button>
+                    <button
+                      onClick={checkTtsHealth}
+                      disabled={checkingHealth}
+                      className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        checkingHealth
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'bg-sage text-sage-dark hover:bg-sage-dark hover:text-white'
+                      }`}
+                    >
+                      {checkingHealth ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" strokeWidth={2} />
+                          กำลังตรวจสอบ...
+                        </>
+                      ) : (
+                        <>
+                          <Check size={14} strokeWidth={2} />
+                          ตรวจสอบสถานะ
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6">
+                {ttsHealth ? (
+                  <div className="space-y-3">
+                    {ttsHealth.providers.map((provider) => (
+                      <div
+                        key={provider.name}
+                        className={`flex items-center justify-between p-4 rounded-xl border-2 ${
+                          provider.healthy
+                            ? 'bg-sage/10 border-sage/30'
+                            : 'bg-red-50 border-red-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            provider.healthy ? 'bg-sage-dark' : 'bg-red-500'
+                          }`} />
+                          <div>
+                            <p className="font-medium text-navy">{provider.name}</p>
+                            {provider.latency && (
+                              <p className="text-xs text-text-muted">Latency: {provider.latency}ms</p>
+                            )}
+                          </div>
+                        </div>
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          provider.healthy
+                            ? 'bg-sage/20 text-sage-dark'
+                            : 'bg-red-100 text-red-700'
+                        }`}>
+                          {provider.healthy ? 'ปกติ' : 'ใช้งานไม่ได้'}
+                        </span>
+                      </div>
+                    ))}
+                    {ttsHealth.healthCache && Object.keys(ttsHealth.healthCache).length > 0 && (
+                      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                        <p className="text-sm font-medium text-amber-900 mb-2">
+                          ⚠️ Provider ที่ถูกปิดใช้ชั่วคราว:
+                        </p>
+                        <div className="text-xs text-amber-800 space-y-1">
+                          {Object.entries(ttsHealth.healthCache).map(([name, status]) => (
+                            status.disabled && (
+                              <p key={name}>
+                                • {name}: {status.failureCount} ครั้งล้มเหลว
+                              </p>
+                            )
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-text-muted">
+                    <Check size={32} className="mx-auto mb-2 opacity-30" strokeWidth={2} />
+                    <p>คลิก "ตรวจสอบสถานะ" เพื่อดูสถานะของ TTS Providers</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div className="bg-cream/30 rounded-2xl p-6 border border-cream-dark border-dashed">
               <h4 className="text-sm font-semibold text-navy mb-2 flex items-center gap-2">
                 <Info size={14} className="text-accent" /> ข้อมูลเพิ่มเติม

@@ -86,8 +86,8 @@ export async function getAccessPolicies(req: Request, res: Response) {
       })
     }
 
-    if (userContext.userRole !== 'admin') {
-      console.log('[Access Policies API] Non-admin access attempt:', userContext.userRole)
+    if (!['admin', 'owner'].includes(userContext.userRole)) {
+      console.log('[Access Policies API] Non-admin/owner access attempt:', userContext.userRole)
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only admins can view access policies'
@@ -172,8 +172,8 @@ export async function updateAccessPolicy(req: Request, res: Response) {
       })
     }
 
-    if (userContext.userRole !== 'admin') {
-      console.log('[Access Policies API] Non-admin update attempt:', userContext.userRole)
+    if (!['admin', 'owner'].includes(userContext.userRole)) {
+      console.log('[Access Policies API] Non-admin/owner update attempt:', userContext.userRole)
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only admins can update access policies'
@@ -294,7 +294,7 @@ export async function createAccessPolicy(req: Request, res: Response) {
     // Verify user is authenticated and is admin
     const userContext = await getUserRoleFromRequest(req)
 
-    if (!userContext || userContext.userRole !== 'admin') {
+    if (!userContext || !['admin', 'owner'].includes(userContext.userRole)) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only admins can create access policies'
@@ -360,7 +360,7 @@ export async function deleteAccessPolicy(req: Request, res: Response) {
     // Verify user is authenticated and is admin
     const userContext = await getUserRoleFromRequest(req)
 
-    if (!userContext || userContext.userRole !== 'admin') {
+    if (!userContext || !['admin', 'owner'].includes(userContext.userRole)) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only admins can delete access policies'
@@ -420,7 +420,7 @@ export async function resetAccessPolicies(req: Request, res: Response) {
     // Verify user is authenticated and is admin
     const userContext = await getUserRoleFromRequest(req)
 
-    if (!userContext || userContext.userRole !== 'admin') {
+    if (!userContext || !['admin', 'owner'].includes(userContext.userRole)) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only admins can reset access policies'
@@ -512,7 +512,7 @@ export async function getAccessPoliciesSummary(req: Request, res: Response) {
       })
     }
 
-    if (userContext.userRole !== 'admin') {
+    if (!['admin', 'owner'].includes(userContext.userRole)) {
       return res.status(403).json({
         error: 'FORBIDDEN',
         message: 'Only admins can view access policy summaries'

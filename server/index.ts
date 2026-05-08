@@ -19,7 +19,7 @@ import {
   getRegenerationStatus
 } from './api/settings.controller.js'
 import { testEmbeddingSimilarity } from './api/embedding-test.controller.js'
-import { generateSpeech } from './api/tts.controller.js'
+import { generateSpeech, getTTSHealth, resetTTSHealth } from './api/tts.controller.js'
 import {
   getAccessPolicies,
   updateAccessPolicy,
@@ -353,6 +353,8 @@ app.post('/api/rag/intent', async (req, res) => {
 
 // TTS API
 app.post('/api/tts/generate', generateSpeech)
+app.get('/api/tts/health', getTTSHealth)
+app.post('/api/tts/health/reset', resetTTSHealth)
 
 // Health check
 app.get('/api/rag/health', (req, res) => {
