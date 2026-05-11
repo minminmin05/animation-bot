@@ -14,6 +14,7 @@ import {
   updateThemeSettings,
   updateNotificationSettings,
   updateEmbeddingProvider,
+  updateLlmSettings,
   updateTtsSettings,
   regenerateEmbeddings,
   getRegenerationStatus
@@ -28,7 +29,12 @@ import {
   resetAccessPolicies,
   getAccessPoliciesSummary
 } from './api/access-policies.controller.js'
-import { getPersonalData } from './services/grade.service.js'
+import {
+  getPersonalData,
+  detectPersonalDataType,
+  extractStudentName,
+  getStudentDataByName
+} from './services/grade.service.js'
 import { checkQuerySafety } from './security/queryGuard.js'
 
 const app = express()
@@ -141,23 +147,50 @@ app.post('/api/rag/ask', async (req, res) => {
       // Detect what type of personal data is being requested
       const dataType = detectPersonalDataType(question)
 
+      // Check if asking about a specific student by name
+      const studentName = extractStudentName(question)
+
       console.log('[API] PERSONAL_DATA request:', {
         userId,
         userRole,
         dataType,
-        action: 'GET_' + dataType.toUpperCase()
+        studentName,
+        action: studentName ? `GET_${dataType.toUpperCase()}_FOR_STUDENT` : `GET_${dataType.toUpperCase()}`
       })
 
       try {
-        // Fetch personal data securely
-        const personalData = await getPersonalData(userId, userRole || 'student', dataType)
+        let personalData: any
+        let targetStudentName: string | undefined
+
+        if (studentName && userRole === 'admin') {
+          // Admin querying data for a specific student by name
+          console.log('[API] Admin querying data for student:', studentName)
+          const result = await getStudentDataByName(studentName, dataType, userId, userRole || 'admin')
+
+          if (!result) {
+            return res.json({
+              intent: intentResult.intent,
+              type: 'personal_data',
+              text: `ไม่พบนักเรียนชื่อ "${studentName}" ในระบบ (Student "${studentName}" not found)`,
+              emotion: 'concerned'
+            })
+          }
+
+          personalData = result.data
+          targetStudentName = result.student.name
+        } else {
+          // Regular user querying their own data
+          personalData = await getPersonalData(userId, userRole || 'student', dataType)
+        }
 
         // Check if data exists
         if (!personalData || (Array.isArray(personalData) && personalData.length === 0)) {
           return res.json({
             intent: intentResult.intent,
             type: 'personal_data',
-            text: 'ไม่พบข้อมูลของคุณในระบบ (No data found for you in the system)',
+            text: targetStudentName
+              ? `ไม่พบข้อมูล${dataType === 'grades' ? 'เกรด' : dataType === 'attendance' ? 'การมาเรียน' : 'ตารางเรียน'}ของ ${targetStudentName} (No ${dataType} found for ${targetStudentName})`
+              : 'ไม่พบข้อมูลของคุณในระบบ (No data found for you in the system)',
             emotion: 'helpful'
           })
         }
@@ -167,7 +200,9 @@ app.post('/api/rag/ask', async (req, res) => {
         if (dataType === 'grades') {
           const grades = personalData as any[]
           context = grades.map(g =>
-            `วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
+            g.student_name
+              ? `นักเรียน: ${g.student_name}, วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
+              : `วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
           ).join('\n')
         } else if (dataType === 'attendance') {
           const attendance = personalData as any[]
@@ -195,6 +230,7 @@ app.post('/api/rag/ask', async (req, res) => {
           intent: intentResult.intent,
           type: 'personal_data',
           dataType,
+          studentName: targetStudentName,
           emotion: 'happy' // Positive emotion for successful data retrieval
         })
       } catch (error: any) {
@@ -232,7 +268,47 @@ app.post('/api/rag/ask', async (req, res) => {
       })
     }
 
-    // Handle KNOWLEDGE intent - proceed with RAG
+    // Handle KNOWLEDGE intent - check for statistics questions first
+    let statisticsContext = null
+
+    // Check if this is a statistics question that needs database query
+    const statsKeywords = /มี(กี่|ทั้งหมด|เท่าไร).*(นักเรียน|ครู|คน|นักเรียนทั้งหมด)|นักเรียน.*กี่คน|ครู.*กี่คน|จำนวน(นักเรียน|ครู|คน)|โรงเรียน.*มีกี่/
+    if (statsKeywords.test(question)) {
+      console.log('[API] Statistics question detected, querying database...')
+      try {
+        const { createClient } = await import('@supabase/supabase-js')
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_KEY!
+        )
+
+        // Get student count
+        const { count: studentCount } = await supabase
+          .from('students')
+          .select('*', { count: 'exact', head: true })
+
+        // Get teacher count
+        const { count: teacherCount } = await supabase
+          .from('teachers')
+          .select('*', { count: 'exact', head: true })
+
+        // Get class count
+        const { count: classCount } = await supabase
+          .from('classes')
+          .select('*', { count: 'exact', head: true })
+
+        statisticsContext = `สถิติโรงเรียน:\n`
+          + `- นักเรียนทั้งหมด: ${studentCount || 0} คน\n`
+          + `- ครูทั้งหมด: ${teacherCount || 0} คน\n`
+          + `- คลาสเรียนทั้งหมด: ${classCount || 0} คลาส`
+
+        console.log('[API] Statistics context:', statisticsContext)
+      } catch (error) {
+        console.error('[API] Error fetching statistics:', error)
+      }
+    }
+
+    // Proceed with RAG (or use statistics context if available)
     console.log(`[API] Generating embedding...`)
     const embedding = await generateEmbedding(question)
     console.log(`[API] Embedding generated: dim=${embedding.length}`)
@@ -247,7 +323,7 @@ app.post('/api/rag/ask', async (req, res) => {
     }
 
     console.log(`[API] Generating answer with LLM...`)
-    const answer = await generateAnswer(question, sources)
+    const answer = await generateAnswer(question, sources, statisticsContext || undefined)
     console.log(`[API] Answer generated successfully`)
 
     console.log(`[API] Returning answer\n`)
@@ -307,6 +383,7 @@ app.post('/api/settings/general', updateGeneralSettings)
 app.post('/api/settings/theme', updateThemeSettings)
 app.post('/api/settings/notifications', updateNotificationSettings)
 app.post('/api/settings/embedding', updateEmbeddingProvider)
+app.post('/api/settings/llm', updateLlmSettings)
 app.post('/api/settings/tts', updateTtsSettings)
 app.post('/api/embeddings/regenerate', regenerateEmbeddings)
 app.get('/api/embeddings/regenerate/status', getRegenerationStatus)

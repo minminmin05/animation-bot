@@ -54,7 +54,17 @@ const INTENT_PATTERNS = {
     /วิธี(ลงทะเบียน|เรียน|ทำ)/,
     /เกรดเฉลี่ย|คำนวณ.*เกรด|gpa.*/i,
     /วิชา(อะไร|ไหน)/,
-    /มีสิทธิ์|สิทธิ์|แก้ตัว|กี่ครั้ง|ได้กี่/
+    /มีสิทธิ์|สิทธิ์|แก้ตัว|กี่ครั้ง|ได้กี่/,
+    // Questions about counts/statistics - must match "มี" ... "กี่" ... noun
+    /มี.*กี่.*(นักเรียน|ครู|คน|ห้อง|คลาส|อาคาร)/,
+    /มี(นักเรียน|ครู|คน).*กี่/,
+    /นักเรียน.*กี่คน/,
+    /ครู.*กี่คน/,
+    /จำนวน(นักเรียน|ครู|คน|ห้อง|คลาส)/,
+    /โรงเรียน.*มี(กี่|อะไร|อย่างไร)/,
+    /ทั้งหมด.*กี่/,
+    // General questions about school
+    /สถานที่|ห้อง|อาคาร|โรงเรียน/
   ],
 
   // PERSONAL_DATA: grades, attendance, personal info
@@ -187,6 +197,21 @@ export function classifyIntent(
 ): IntentClassification {
   const q = question.toLowerCase().trim()
 
+  // Check for student name pattern first (admin queries like "show grades for John")
+  const studentNamePattern = /(?:show|get|what(?:'s| is)|tell me)(?:\s+\w+){0,3}\s+(?:for|of)\s+["']?([A-Z][a-z฀-๿]+(?:\s+[A-Z][a-z฀-๿]+)?)["']?/i
+  const studentNameMatch = q.match(studentNamePattern)
+  const hasStudentName = studentNameMatch && studentNameMatch[1] && !/^(me|my|all|the|a|an)$/i.test(studentNameMatch[1])
+
+  // If student name is detected with data keywords, treat as PERSONAL_DATA
+  if (hasStudentName && /(grade|score|attendance|schedule|class|subject|วิชา|เกรด|คะแนน|การมาเรียน|ตาราง)/i.test(q)) {
+    return {
+      intent: Intent.PERSONAL_DATA,
+      confidence: 0.95,
+      reasoning: 'Detected student name with data keyword - admin query',
+      suggestedAction: userContext?.userId ? 'Fetch data for specified student' : 'Authentication required'
+    }
+  }
+
   // Check for personal data patterns
   const personalPatterns = INTENT_PATTERNS[Intent.PERSONAL_DATA]
   const personalMatches = personalPatterns.filter(p => p.test(q))
@@ -292,8 +317,6 @@ export async function classifyIntentWithLLM(
   userContext?: UserContext
 ): Promise<IntentClassification> {
   try {
-    const model = genAI.getGenerativeModel({ model: MODEL })
-
     const prompt = `You are an intent classifier for a school management AI assistant.
 
 Classify the user's query into ONE of these categories:
@@ -317,9 +340,56 @@ User role: ${userContext?.role || 'unknown'}
 
 Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, AMBIGUOUS, or UNKNOWN). No other text.`
 
-    const result = await model.generateContent(prompt)
-    const intentLabel = result.response.text().trim().toUpperCase()
-    
+    let intentLabel: string
+
+    // Check which LLM provider to use
+    const provider = process.env.LLM_PROVIDER || 'minimax'
+    console.log(`[Intent] Using provider: ${provider}`)
+
+    if (provider === 'minimax' && process.env.MINIMAX_API_KEY) {
+      // Use MiniMax for classification
+      const apiKey = process.env.MINIMAX_API_KEY
+      const isNewFormat = apiKey.startsWith('sk-')
+      const apiUrl = isNewFormat
+        ? 'https://api.minimax.chat/v1/text/chatcompletion_pro'
+        : 'https://api.minimax.chat/v1/text/chatcompletion_v2'
+
+      const requestBody = isNewFormat
+        ? {
+            model: process.env.MINIMAX_MODEL || 'abab6.5s-chat',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            max_tokens: 50
+          }
+        : {
+            model: process.env.MINIMAX_MODEL || 'abab6.5s-chat',
+            messages: [{ sender_type: 'USER', sender_name: 'User', text: prompt }],
+            temperature: 0.3,
+            tokens_to_generate: 50
+          }
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      })
+
+      if (!response.ok) {
+        throw new Error(`MiniMax API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      intentLabel = (data.choices?.[0]?.message?.content || data.reply || '').trim().toUpperCase()
+    } else {
+      // Use Gemini for classification
+      const model = genAI.getGenerativeModel({ model: MODEL })
+      const result = await model.generateContent(prompt)
+      intentLabel = result.response.text().trim().toUpperCase()
+    }
+
     const intent = Object.values(Intent).includes(intentLabel.toLowerCase() as Intent)
       ? intentLabel.toLowerCase() as Intent
       : Intent.UNKNOWN
@@ -332,9 +402,10 @@ Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, AMBIGUOUS, or UNKNOWN). 
       : undefined
 
     return {
+
       intent,
       confidence,
-      reasoning: 'LLM-based classification (Gemini)',
+      reasoning: `LLM-based classification (${provider === 'minimax' ? 'MiniMax' : 'Gemini'})`,
       suggestedAction: intent === Intent.PERSONAL_DATA
         ? 'Query database with user authentication'
         : intent === Intent.KNOWLEDGE

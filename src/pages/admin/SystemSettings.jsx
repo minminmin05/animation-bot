@@ -5,9 +5,9 @@
 
 import { useState, useEffect, Suspense, lazy } from 'react'
 import { motion } from 'framer-motion'
-import { Settings as SettingsIcon, Bell, Palette, Shield, Database, Brain, AlertTriangle, RefreshCw, Check, Info, Lock, RotateCcw, Save, Volume2, Loader2 } from 'lucide-react'
+import { Settings as SettingsIcon, Bell, Palette, Shield, Database, Brain, AlertTriangle, RefreshCw, Check, Info, Lock, RotateCcw, Save, Volume2, Loader2, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
-import { centralSupabase as supabase } from '@/integrations/supabase/central-client'
+import { supabase } from '@/config/supabaseClient'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
 
@@ -106,6 +106,13 @@ const SystemSettings = () => {
   const [ttsTestResult, setTtsTestResult] = useState(null)
   const [ttsHealth, setTtsHealth] = useState(null)
   const [checkingHealth, setCheckingHealth] = useState(false)
+
+  // LLM settings state
+  const [llmProvider, setLlmProvider] = useState('minimax')
+  const [llmModel, setLlmModel] = useState('')
+  const [llmLoading, setLlmLoading] = useState(false)
+  const [savingLlm, setSavingLlm] = useState(false)
+  const [llmApiKey, setLlmApiKey] = useState('')
 
   // Embedding test state
   const [testTexts, setTestTexts] = useState([
@@ -294,6 +301,89 @@ const SystemSettings = () => {
     } catch (error) {
       console.error('Reset error:', error)
       toast.error('ไม่สามารถรีเซ็ตสถานะ Provider ได้')
+    }
+  }
+
+  // LLM Provider options
+  const LLM_PROVIDERS = {
+    gemini: {
+      id: 'gemini',
+      name: 'Google Gemini',
+      description: 'Google\'s Gemini AI models - Fast and capable',
+      thaiDescription: 'โมเดล AI จาก Google รวดเร็วและมีประสิทธิภาพ',
+      models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+      badge: 'แนะนำ',
+      defaultModel: 'gemini-2.5-flash'
+    },
+    minimax: {
+      id: 'minimax',
+      name: 'MiniMax AI',
+      description: 'High quality Chinese/Thai language support',
+      thaiDescription: 'โมเดล AI ที่รองรับภาษาจีนและไทยได้ดีเยี่ยม',
+      models: ['abab6.5s-chat', 'abab6.5-chat', 'abab5.5-chat'],
+      badge: 'รองรับไทย',
+      defaultModel: 'abab6.5s-chat'
+    }
+  }
+
+  // Fetch current LLM settings
+  const fetchLlmSettings = async () => {
+    try {
+      setLlmLoading(true)
+      const response = await fetch(`${API_BASE}/api/settings`)
+      if (response.ok) {
+        const data = await response.json()
+        setLlmProvider(data.llm?.provider || 'minimax')
+        setLlmModel(data.llm?.model || 'abab6.5s-chat')
+      }
+    } catch (error) {
+      console.error('[Frontend] Failed to fetch LLM settings:', error)
+    } finally {
+      setLlmLoading(false)
+    }
+  }
+
+  // Fetch LLM settings on mount
+  useEffect(() => {
+    fetchLlmSettings()
+  }, [])
+
+  const handleLlmProviderChange = async (providerId, model = null, apiKey = null) => {
+    try {
+      setSavingLlm(true)
+
+      // Try to get auth token, but don't require it for LLM changes
+      let headers = { 'Content-Type': 'application/json' }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
+      const body = { provider: providerId }
+      if (model) body.model = model
+      if (apiKey) body.apiKey = apiKey
+
+      const response = await fetch(`${API_BASE}/api/settings/llm`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        throw new Error(errorData.error || errorData.message || 'Failed to update LLM provider')
+      }
+
+      const data = await response.json()
+      setLlmProvider(providerId)
+      if (data.llm?.model) setLlmModel(data.llm.model)
+
+      toast.success(`เปลี่ยน LLM เป็น ${LLM_PROVIDERS[providerId].name} สำเร็จ`)
+    } catch (error) {
+      console.error('[Frontend] Error updating LLM provider:', error)
+      toast.error(`ไม่สามารถเปลี่ยน LLM ได้: ${error.message}`)
+    } finally {
+      setSavingLlm(false)
     }
   }
 
@@ -560,6 +650,7 @@ const SystemSettings = () => {
   const tabs = [
     { id: 'general', label: 'ทั่วไป', icon: SettingsIcon },
     { id: 'embedding', label: 'Embedding', icon: Brain },
+    { id: 'llm', label: 'LLM Model', icon: Sparkles },
     { id: 'tts', label: 'เสียงสังเคราะห์ (TTS)', icon: Volume2 },
     { id: 'animation', label: 'แอนิเมชัน', icon: Palette },
     { id: 'notifications', label: 'การแจ้งเตือน', icon: Bell },
@@ -925,6 +1016,220 @@ const SystemSettings = () => {
                         </div>
                       </div>
                     )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'llm' && (
+          <div className="space-y-6">
+            {/* Header Card */}
+            <div className="card">
+              <div className="p-6 border-b border-cream-dark">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-purple-600" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-display font-semibold text-navy">
+                      ตั้งค่า LLM Model (AI Chat)
+                    </h2>
+                    <p className="text-sm text-text-muted">
+                      เลือกโมเดล AI สำหรับ AI Assistant
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* API Keys Info Banner */}
+            <div className="card bg-blue-50 border-blue-200">
+              <div className="p-4 flex items-start gap-3">
+                <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" strokeWidth={2} />
+                <div className="flex-1">
+                  <h3 className="font-medium text-blue-900">🔑 วิธีการตั้งค่า API Keys</h3>
+                  <p className="text-sm text-blue-800 mt-2">
+                    เพิ่ม API Keys ลงในไฟล์ <code className="bg-blue-100 px-2 py-0.5 rounded">server/.env</code>:
+                  </p>
+                  <div className="mt-2 space-y-1 text-xs text-blue-700 font-mono bg-blue-100/50 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-600 font-bold">GEMINI:</span>
+                      <span>GEMINI_API_KEY=your_gemini_key_here</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-purple-600 font-bold">MINIMAX:</span>
+                      <span>MINIMAX_API_KEY=GroupId;ApiKey</span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-blue-800 mt-2">
+                    หรือป้อน API Key ด้านล่างเพื่อใช้งานชั่วคราว (ระหว่างเซสชันนี้เท่านั้น)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {llmLoading ? (
+              <div className="card">
+                <div className="p-8 text-center">
+                  <RefreshCw className="w-8 h-8 text-navy mx-auto mb-3 animate-spin" />
+                  <p className="text-text-muted">กำลังโหลดข้อมูล...</p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Model Selection */}
+                <div className="card">
+                  <div className="p-6 border-b border-cream-dark">
+                    <h3 className="text-base font-display font-semibold text-navy">
+                      เลือกโมเดล AI
+                    </h3>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {Object.values(LLM_PROVIDERS).map((provider) => (
+                      <motion.button
+                        key={provider.id}
+                        onClick={() => !savingLlm && handleLlmProviderChange(provider.id)}
+                        disabled={savingLlm}
+                        className={`w-full text-left p-5 rounded-xl border-2 transition-all ${
+                          llmProvider === provider.id
+                            ? 'border-purple-500 bg-purple-50'
+                            : 'border-cream-dark hover:border-purple-300 hover:bg-purple-50/20'
+                        } ${savingLlm ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        whileHover={!savingLlm ? { scale: 1.01 } : {}}
+                        whileTap={!savingLlm ? { scale: 0.99 } : {}}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-navy">{provider.name}</h4>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                provider.id === 'minimax' ? 'bg-purple/20 text-purple-dark' :
+                                'bg-blue/20 text-blue-dark'
+                              }`}>
+                                {provider.badge}
+                              </span>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-2">{provider.thaiDescription}</p>
+                            <p className="text-xs text-text-muted">
+                              Models: {provider.models.join(', ')}
+                            </p>
+                          </div>
+                          {llmProvider === provider.id && (
+                            <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center flex-shrink-0">
+                              <Check size={14} className="text-white" strokeWidth={3} />
+                            </div>
+                          )}
+                        </div>
+                      </motion.button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Model Selection & API Key */}
+                <div className="card">
+                  <div className="p-6 border-b border-cream-dark">
+                    <h3 className="text-base font-display font-semibold text-navy">
+                      ตั้งค่าเพิ่มเติม
+                    </h3>
+                  </div>
+                  <div className="p-6 space-y-4">
+                    {/* Model Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-navy mb-2">
+                        เลือกโมเดลย่อย (Model)
+                      </label>
+                      <select
+                        value={llmModel}
+                        onChange={(e) => setLlmModel(e.target.value)}
+                        disabled={savingLlm}
+                        className="input-field"
+                      >
+                        {LLM_PROVIDERS[llmProvider]?.models.map((model) => (
+                          <option key={model} value={model}>
+                            {model}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* API Key Input (Optional) */}
+                    <div>
+                      <label className="block text-sm font-medium text-navy mb-2">
+                        {llmProvider === 'minimax' ? 'API Key (GroupId;ApiKey)' : 'API Key (ถ้าต้องการเปลี่ยน)'}
+                      </label>
+                      <input
+                        type="password"
+                        value={llmApiKey}
+                        onChange={(e) => setLlmApiKey(e.target.value)}
+                        placeholder={llmProvider === 'minimax'
+                          ? 'กรอก: GroupId;ApiKey (เช่น: 12345678;your_api_key)'
+                          : 'ป้อน API Key ใหม่ (ถ้าต้องการเปลี่ยน)'}
+                        className="input-field"
+                        disabled={savingLlm}
+                      />
+                      {llmProvider === 'minimax' && (
+                        <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          <p className="font-medium mb-1">📝 MiniMax API Key Format:</p>
+                          <p>Format: <code className="bg-amber-100 px-1 rounded">GroupId;ApiKey</code></p>
+                          <p className="mt-1">Get GroupId from: <a href="https://www.minimaxi.com/user-center/basic-information/interface-key" target="_blank" className="underline">MiniMax Console → Interface Key</a></p>
+                        </div>
+                      )}
+                      <p className="text-xs text-text-muted mt-1">
+                        ปล่อยว่างหากต้องการใช้ค่าจากไฟล์ .env
+                      </p>
+                    </div>
+
+                    {/* Save Button */}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleLlmProviderChange(llmProvider, llmModel, llmApiKey || null)}
+                        disabled={savingLlm}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                          savingLlm
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-purple-600 text-white hover:bg-purple-700 shadow-medium'
+                        }`}
+                      >
+                        {savingLlm ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" strokeWidth={2} />
+                            กำลังบันทึก...
+                          </>
+                        ) : (
+                          <>
+                            <Save size={16} strokeWidth={2} />
+                            บันทึกการตั้งค่า
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Current Status */}
+                <div className="card">
+                  <div className="p-6 border-b border-cream-dark">
+                    <h3 className="text-base font-display font-semibold text-navy">
+                      สถานะปัจจุบัน
+                    </h3>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-cream/30 rounded-xl p-4">
+                        <p className="text-sm text-text-muted mb-1">Provider</p>
+                        <p className="font-semibold text-navy">
+                          {LLM_PROVIDERS[llmProvider]?.name || '-'}
+                        </p>
+                      </div>
+                      <div className="bg-cream/30 rounded-xl p-4">
+                        <p className="text-sm text-text-muted mb-1">Model</p>
+                        <p className="font-semibold text-navy text-sm">
+                          {llmModel || '-'}
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </>

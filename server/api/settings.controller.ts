@@ -130,6 +130,10 @@ export async function getSettings(req: Request, res: Response) {
         modelName: embedConfig.modelName,
         dimensions: embedConfig.dimensions
       },
+      llm: {
+        provider: process.env.LLM_PROVIDER || 'minimax',
+        model: process.env.MINIMAX_MODEL || process.env.GEMINI_MODEL || 'abab6.5s-chat'
+      },
       tts: {
         provider: systemSettings.tts_provider || 'botnoi'
       },
@@ -417,6 +421,109 @@ export async function getRegenerationStatus(req: Request, res: Response) {
   } catch (error) {
     console.error('[Settings API] Error getting status:', error)
     res.status(500).json({ error: 'Failed to get status' })
+  }
+}
+
+/**
+ * Update LLM settings
+ */
+export async function updateLlmSettings(req: Request, res: Response) {
+  try {
+    const { provider, apiKey, model } = req.body
+
+    console.log('[Settings API] POST /api/settings/llm')
+    console.log('[Settings API] Request body:', { provider, model: model ? '***' : undefined })
+
+    // Validate provider
+    const validProviders = ['gemini', 'minimax']
+    if (!provider || !validProviders.includes(provider)) {
+      console.error('[Settings API] Invalid provider:', provider)
+      return res.status(400).json({
+        error: 'Invalid provider',
+        message: `Provider must be one of: ${validProviders.join(', ')}`
+      })
+    }
+
+    // Get user info if authenticated (for tracking), but don't require auth
+    let userId = null
+    const authHeader = req.headers.authorization
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+      if (!authError && user) {
+        userId = user.id
+      }
+    }
+
+    // Update environment variable for provider (runtime only)
+    process.env.LLM_PROVIDER = provider
+
+    // If API key is provided, update the environment variable (runtime only)
+    if (apiKey && provider === 'minimax') {
+      process.env.MINIMAX_API_KEY = apiKey
+    }
+    if (apiKey && provider === 'gemini') {
+      process.env.GEMINI_API_KEY = apiKey
+    }
+
+    // If model is provided, update environment variable (runtime only)
+    if (model) {
+      if (provider === 'minimax') {
+        process.env.MINIMAX_MODEL = model
+      } else if (provider === 'gemini') {
+        process.env.GEMINI_MODEL = model
+      }
+    }
+
+    // Store in database for persistence
+    const updateData: any = {
+      llm_provider: provider,
+      llm_model: model || (provider === 'minimax' ? 'abab6.5s-chat' : 'gemini-2.5-flash')
+    }
+    if (userId) {
+      updateData.updated_by = userId
+    }
+
+    const { error } = await supabase
+      .from('system_settings')
+      .update(updateData)
+      .eq('id', 'settings')
+
+    if (error) {
+      // If column doesn't exist yet, just ignore (for backward compatibility)
+      console.log('[Settings API] Note: llm_provider column may not exist in database yet')
+    }
+
+    // Clear cache
+    settingsCache = null
+    cacheExpiry = 0
+
+    // Define provider info
+    const providerInfo: Record<string, { name: string; description: string; models: string[] }> = {
+      gemini: {
+        name: 'Google Gemini',
+        description: 'Google\'s Gemini AI models - Fast and capable',
+        models: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro']
+      },
+      minimax: {
+        name: 'MiniMax',
+        description: 'MiniMax AI - High quality Chinese/Thai language support',
+        models: ['abab6.5s-chat', 'abab6.5-chat', 'abab5.5-chat']
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'LLM settings updated successfully',
+      llm: {
+        provider,
+        model: model || (provider === 'minimax' ? 'abab6.5s-chat' : 'gemini-2.5-flash'),
+        info: providerInfo[provider]
+      }
+    })
+  } catch (error) {
+    console.error('[Settings API] Error updating LLM settings:', error)
+    res.status(500).json({ error: 'Failed to update LLM settings', message: String(error) })
   }
 }
 

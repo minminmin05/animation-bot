@@ -27,12 +27,14 @@ export interface GradeInfo {
   grade: string
   class_name?: string
   assignment_title?: string
+  student_name?: string  // For admin access to identify students
 }
 
 export interface AttendanceInfo {
   date: string
   status: string
   class_name?: string
+  student_name?: string  // For admin access to identify students
 }
 
 export interface ScheduleInfo {
@@ -41,6 +43,7 @@ export interface ScheduleInfo {
   room_number?: string
   teacher_name?: string
   schedule?: string
+  student_name?: string  // For admin access to identify students
 }
 
 /**
@@ -183,9 +186,10 @@ async function getStudentIdsByScope(
  */
 export async function getStudentGrades(
   userId: string,
-  userRole: string
+  userRole: string,
+  targetStudentId?: string  // Optional: for admin querying specific student
 ): Promise<GradeInfo[]> {
-  console.log('[GradeService] Fetching grades for user:', { userId, userRole })
+  console.log('[GradeService] Fetching grades for user:', { userId, userRole, targetStudentId })
 
   // Check access scope from policies
   const scope = await getAccessScope(userRole, 'grades', 'read')
@@ -203,31 +207,43 @@ export async function getStudentGrades(
   if (scope === AccessScope.ALL) {
     console.log('[GradeService] Admin accessing all grades', {
       admin_id: userId,
+      target_student: targetStudentId,
       timestamp: new Date().toISOString()
     })
   }
 
   // Get student IDs based on scope
-  const studentIds = await getStudentIdsByScope(scope, userContext)
+  let studentIds = await getStudentIdsByScope(scope, userContext)
 
-  // Build query
+  // If admin is querying for a specific student, use that student's ID
+  if (scope === AccessScope.ALL && targetStudentId) {
+    studentIds = [targetStudentId]
+    console.log('[GradeService] Admin querying specific student:', targetStudentId)
+  }
+
+  // Build query using student_subject_grades table
   let query = getSupabase()
-    .from('student_grades')
+    .from('student_subject_grades')
     .select(`
-      percentage,
-      letter_grade,
       student_id,
-      assignments (
-        title,
-        max_points,
-        class_sections (
-          name,
-          subject
-        )
+      final_grade,
+      letter_grade,
+      grade_points,
+      class_id,
+      academic_year,
+      term,
+      students (
+        name,
+        user_id
+      ),
+      classes (
+        name,
+        subject,
+        section
       )
     `)
-    .not('percentage', 'is', null)
-    .order('submitted_at', { ascending: false })
+    .not('final_grade', 'is', null)
+    .order('created_at', { ascending: false })
     .limit(50)
 
   // Apply filter based on scope
@@ -245,11 +261,13 @@ export async function getStudentGrades(
   console.log('[GradeService] Found', grades?.length || 0, 'grade records')
 
   return grades?.map(g => ({
-    subject: g.assignments?.class_sections?.subject || 'Unknown',
-    score: Math.round(g.percentage || 0),
+    subject: g.classes?.subject || g.classes?.name || 'Unknown',
+    score: parseFloat(g.final_grade) || 0,
     grade: g.letter_grade || 'N/A',
-    class_name: g.assignments?.class_sections?.name,
-    assignment_title: g.assignments?.title
+    class_name: g.classes?.name,
+    assignment_title: null,
+    student_name: g.students?.name || 'Unknown',
+    student_id: g.student_id
   })) || []
 }
 
@@ -258,9 +276,10 @@ export async function getStudentGrades(
  */
 export async function getStudentAttendance(
   userId: string,
-  userRole: string
+  userRole: string,
+  targetStudentId?: string  // Optional: for admin querying specific student
 ): Promise<AttendanceInfo[]> {
-  console.log('[GradeService] Fetching attendance for user:', { userId, userRole })
+  console.log('[GradeService] Fetching attendance for user:', { userId, userRole, targetStudentId })
 
   // Check access scope from policies
   const scope = await getAccessScope(userRole, 'attendance', 'read')
@@ -278,12 +297,19 @@ export async function getStudentAttendance(
   if (scope === AccessScope.ALL) {
     console.log('[GradeService] Admin accessing all attendance', {
       admin_id: userId,
+      target_student: targetStudentId,
       timestamp: new Date().toISOString()
     })
   }
 
   // Get student IDs based on scope
-  const studentIds = await getStudentIdsByScope(scope, userContext)
+  let studentIds = await getStudentIdsByScope(scope, userContext)
+
+  // If admin is querying for a specific student, use that student's ID
+  if (scope === AccessScope.ALL && targetStudentId) {
+    studentIds = [targetStudentId]
+    console.log('[GradeService] Admin querying specific student:', targetStudentId)
+  }
 
   // Build query
   let query = getSupabase()
@@ -326,9 +352,10 @@ export async function getStudentAttendance(
  */
 export async function getStudentSchedule(
   userId: string,
-  userRole: string
+  userRole: string,
+  targetStudentId?: string  // Optional: for admin querying specific student
 ): Promise<ScheduleInfo[]> {
-  console.log('[GradeService] Fetching schedule for user:', { userId, userRole })
+  console.log('[GradeService] Fetching schedule for user:', { userId, userRole, targetStudentId })
 
   // Check access scope from policies
   const scope = await getAccessScope(userRole, 'schedule', 'read')
@@ -346,12 +373,19 @@ export async function getStudentSchedule(
   if (scope === AccessScope.ALL) {
     console.log('[GradeService] Admin accessing all schedules', {
       admin_id: userId,
+      target_student: targetStudentId,
       timestamp: new Date().toISOString()
     })
   }
 
   // Get student IDs based on scope
-  const studentIds = await getStudentIdsByScope(scope, userContext)
+  let studentIds = await getStudentIdsByScope(scope, userContext)
+
+  // If admin is querying for a specific student, use that student's ID
+  if (scope === AccessScope.ALL && targetStudentId) {
+    studentIds = [targetStudentId]
+    console.log('[GradeService] Admin querying specific student:', targetStudentId)
+  }
 
   // Build query
   let query = getSupabase()
@@ -403,9 +437,10 @@ export async function getStudentSchedule(
 export async function getPersonalData(
   userId: string,
   userRole: string,
-  dataType: 'grades' | 'attendance' | 'schedule'
+  dataType: 'grades' | 'attendance' | 'schedule',
+  targetStudentId?: string  // Optional: for admin querying specific student
 ): Promise<GradeInfo[] | AttendanceInfo[] | ScheduleInfo[]> {
-  console.log('[GradeService] Personal data request:', { userId, userRole, dataType })
+  console.log('[GradeService] Personal data request:', { userId, userRole, dataType, targetStudentId })
 
   // Verify user has access to this resource type
   const scope = await getAccessScope(userRole, dataType, 'read')
@@ -417,11 +452,11 @@ export async function getPersonalData(
 
   switch (dataType) {
     case 'grades':
-      return await getStudentGrades(userId, userRole)
+      return await getStudentGrades(userId, userRole, targetStudentId)
     case 'attendance':
-      return await getStudentAttendance(userId, userRole)
+      return await getStudentAttendance(userId, userRole, targetStudentId)
     case 'schedule':
-      return await getStudentSchedule(userId, userRole)
+      return await getStudentSchedule(userId, userRole, targetStudentId)
     default:
       return []
   }
@@ -484,4 +519,90 @@ export async function getAccessibleStudentIds(
   const scope = await getAccessScope(userRole, resource, 'read')
   const userContext = await buildUserContext(userId, userRole)
   return await getStudentIdsByScope(scope, userContext)
+}
+
+/**
+ * Search students by name (for admin queries like "show grades for student John")
+ * Returns list of matching students with their IDs and names
+ */
+export async function searchStudentsByName(
+  searchName: string,
+  requestorUserId: string,
+  requestorRole: string
+): Promise<Array<{ id: string; name: string; user_id: string }>> {
+  // Only admins can search students by name
+  const scope = await getAccessScope(requestorRole, 'grades', 'read')
+  if (scope === AccessScope.NONE) {
+    throw new Error('ACCESS_DENIED: You do not have permission to search students')
+  }
+
+  const { data: students } = await getSupabase()
+    .from('students')
+    .select('id, name, user_id')
+    .ilike('name', `%${searchName}%`)
+    .limit(10)
+
+  return students || []
+}
+
+/**
+ * Extract student name from question using patterns
+ * Returns the student name if found, null otherwise
+ */
+export function extractStudentName(question: string): string | null {
+  const patterns = [
+    /(?:for|of|student)\s+["']?([A-Za-z฀-๿\s]+?)["']?(?:\s|$|\.|,)/i,
+    /(?:นักเรียน|คน|ชื่อ)\s*["']?([A-Za-z฀-๿\s]+?)["']?(?:\s|$|\.|,)/,
+    /show\s+(?:grades|attendance|schedule)\s+(?:for|of)\s+["']?([A-Za-z฀-๿\s]+?)["']?(?:\s|$|\.|,)/i
+  ]
+
+  for (const pattern of patterns) {
+    const match = question.match(pattern)
+    if (match && match[1]) {
+      const name = match[1].trim()
+      // Filter out common non-name words
+      if (name.length > 1 && ! /^(me|my|all|the|a|an|มี|ของ|ฉัน|ทุก|ทั้งหมด)$/i.test(name)) {
+        return name
+      }
+    }
+  }
+
+  return null
+}
+
+/**
+ * Get personal data for a specific student by name (admin feature)
+ * Searches for the student and returns their data
+ */
+export async function getStudentDataByName(
+  studentName: string,
+  dataType: 'grades' | 'attendance' | 'schedule',
+  requestorUserId: string,
+  requestorRole: string
+): Promise<{ student: { name: string; user_id: string; id: string }; data: GradeInfo[] | AttendanceInfo[] | ScheduleInfo[] } | null> {
+  console.log('[GradeService] Looking up student by name:', studentName)
+
+  // Search for the student
+  const students = await searchStudentsByName(studentName, requestorUserId, requestorRole)
+
+  if (students.length === 0) {
+    console.log('[GradeService] No student found with name:', studentName)
+    return null
+  }
+
+  // Use the first match
+  const student = students[0]
+  console.log('[GradeService] Found student:', student.name, 'id:', student.id, 'user_id:', student.user_id)
+
+  // Get the student's data using requestor's credentials but targeting the specific student
+  const data = await getPersonalData(requestorUserId, requestorRole, dataType, student.id)
+
+  return {
+    student: {
+      name: student.name,
+      user_id: student.user_id,
+      id: student.id
+    },
+    data
+  }
 }

@@ -5,6 +5,7 @@ import { askAI } from '../../services/embedding/embeddingService'
 import EmotionCharacter from '../../animation-showcase/EmotionCharacter'
 import { generateSpeech } from '../../services/api/ttsService'
 import { useLipSync } from '../../hooks/useLipSync'
+import { useAuth } from '../../context/AuthContext'
 
 // Map old emotion names to new state names
 const emotionMap: Record<string, string> = {
@@ -15,6 +16,7 @@ const emotionMap: Record<string, string> = {
 }
 
 const AIChatAssistant = () => {
+  const { user, userRole } = useAuth()
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -156,7 +158,8 @@ const AIChatAssistant = () => {
 
     try {
       console.log('[AIChat] Calling AI Service...');
-      const response = await askAI(input)
+      console.log('[AIChat] User context:', { userId: user?.id, userRole });
+      const response = await askAI(input, { userId: user?.id, userRole })
       console.log('[AIChat] AI Response received:', response);
 
       const mappedEmotion = emotionMap[response.emotion] || 'positive'
