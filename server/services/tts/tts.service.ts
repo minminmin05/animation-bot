@@ -31,7 +31,7 @@ const providerHealthCache = new Map<string, { disabledUntil: number; failureCoun
 
 /**
  * Get current TTS provider from database
- * Falls back to 'botnoi' if not set
+ * Falls back to 'empty' if not set (no voice model by default)
  */
 export async function getCurrentProvider(): Promise<ProviderType> {
   try {
@@ -42,16 +42,16 @@ export async function getCurrentProvider(): Promise<ProviderType> {
       .single();
 
     if (error || !data) {
-      console.warn('[TTS Service] Could not fetch tts_provider from database, using default: botnoi');
-      return 'botnoi';
+      console.warn('[TTS Service] Could not fetch tts_provider from database, using default: empty');
+      return 'empty';
     }
 
-    const provider = (data.tts_provider as ProviderType) || 'botnoi';
+    const provider = (data.tts_provider as ProviderType) || 'empty';
     console.log(`[TTS Service] Current provider from database: ${provider}`);
     return provider;
   } catch (error) {
     console.error('[TTS Service] Error fetching provider from database:', error);
-    return 'botnoi';
+    return 'empty';
   }
 }
 
@@ -110,6 +110,12 @@ export async function generateSpeechWithFallback(
 
   // Determine which provider to use
   const providerType = preferredProvider || await getCurrentProvider();
+
+  // Check if TTS is disabled (empty provider)
+  if (providerType === 'empty') {
+    throw new Error('TTS is disabled. Please select a voice model in settings.');
+  }
+
   const primaryProvider = getProvider(providerType);
   const primaryName = primaryProvider.getName();
 

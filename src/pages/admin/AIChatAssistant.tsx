@@ -1,11 +1,15 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, lazy, Suspense } from 'react'
 import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { askAI } from '../../services/embedding/embeddingService'
-import EmotionCharacter from '../../animation-showcase/EmotionCharacter'
 import { generateSpeech } from '../../services/api/ttsService'
 import { useLipSync } from '../../hooks/useLipSync'
 import { useAuth } from '../../context/AuthContext'
+import { useLunaSettings } from '../../hooks/useLunaSettings'
+
+// Lazy load assistant components
+const EmotionCharacter = lazy(() => import('../../animation-showcase/EmotionCharacter'))
+const LunaAssistant = lazy(() => import('../../components/luna-assistant').then(m => ({ default: m.LunaAssistant })))
 
 // Map old emotion names to new state names
 const emotionMap: Record<string, string> = {
@@ -17,6 +21,8 @@ const emotionMap: Record<string, string> = {
 
 const AIChatAssistant = () => {
   const { user, userRole } = useAuth()
+  const { settings: lunaSettings } = useLunaSettings()
+
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -27,7 +33,13 @@ const AIChatAssistant = () => {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [ttsLoading, setTtsLoading] = useState(false)
+
+  // Legacy emotion state (for Legacy Assistant)
   const [emotion, setEmotion] = useState<string>('positive')
+
+  // Luna assistant state
+  const [lunaState, setLunaState] = useState<'idle' | 'listening' | 'thinking' | 'talking'>('idle')
+  const [lunaReaction, setLunaReaction] = useState<string | null>(null)
   
   // States for synchronized typing
   const [typingText, setTypingText] = useState('')
@@ -60,6 +72,12 @@ const AIChatAssistant = () => {
 
     const handleEnded = () => {
       cancelAnimationFrame(rafId);
+
+      // Return Luna to idle state after speaking
+      if (lunaSettings.style === 'luna') {
+        setLunaState('idle')
+      }
+
       // Ensure full text is shown at the end
       setTypingText(fullResponseText);
       
@@ -111,6 +129,11 @@ const AIChatAssistant = () => {
           setIsTyping(true);
           setFullResponseText(text);
           setTypingText('');
+
+          // Set Luna to talking state
+          if (lunaSettings.style === 'luna') {
+            setLunaState('talking')
+          }
           
           const playPromise = audioEl.play();
           if (playPromise !== undefined) {
@@ -141,6 +164,11 @@ const AIChatAssistant = () => {
 
     console.log('[AIChat] User sent message:', input);
 
+    // Set Luna state to listening when user types
+    if (lunaSettings.style === 'luna') {
+      setLunaState('listening')
+    }
+
     if (audioEl) {
       audioEl.load(); 
     }
@@ -154,7 +182,14 @@ const AIChatAssistant = () => {
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setLoading(true)
-    setEmotion('positive')
+
+    // Update states based on assistant style
+    if (lunaSettings.style === 'luna') {
+      setLunaState('thinking')
+      setLunaReaction(null)
+    } else {
+      setEmotion('positive')
+    }
 
     try {
       console.log('[AIChat] Calling AI Service...');
@@ -190,23 +225,43 @@ const AIChatAssistant = () => {
         <div className="absolute top-10 left-10 w-32 h-32 bg-indigo-400/20 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute bottom-10 right-10 w-40 h-40 bg-purple-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
 
-        {/* Avatar with Emotion Character */}
+        {/* Avatar with Emotion Character or Luna Assistant */}
         <AnimatePresence mode="wait">
           <motion.div
-            key={emotion}
-            initial={{ opacity: 0, scale: 0.8, rotate: -5 }}
-            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-            exit={{ opacity: 0, scale: 0.8, rotate: 5 }}
+            key={lunaSettings.style}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
             transition={{ duration: 0.3 }}
             className="relative z-10"
           >
-            <EmotionCharacter
-              state={emotion || 'positive'}
-              intensity={0.6}
-              size="xl"
-              showLabel={false}
-              mouthOpen={mouthOpen}
-            />
+            <Suspense fallback={
+              <div className="w-48 h-48 bg-cream/50 rounded-full animate-pulse" />
+            }>
+              {lunaSettings.style === 'luna' ? (
+                <LunaAssistant
+                  state={lunaState}
+                  reaction={lunaReaction || undefined}
+                  quality={lunaSettings.quality}
+                  size={200}
+                  mouthOpen={mouthOpen}
+                  onStateChange={(newState) => {
+                    // Auto-transition from talking to idle when TTS ends
+                    if (newState === 'talking' && !isTyping) {
+                      setLunaState('idle')
+                    }
+                  }}
+                />
+              ) : (
+                <EmotionCharacter
+                  state={emotion || 'positive'}
+                  intensity={0.6}
+                  size="xl"
+                  showLabel={false}
+                  mouthOpen={mouthOpen}
+                />
+              )}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
 
@@ -221,7 +276,9 @@ const AIChatAssistant = () => {
           <p className="text-sm text-text-secondary mt-2 h-6">
             {loading ? (
               <span className="flex items-center gap-2 justify-center">
-                <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> กำลังคิด...
+                <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> {
+                  lunaSettings.style === 'luna' ? 'กำลังคิด...' : 'กำลังคิด...'
+                }
               </span>
             ) : ttsLoading ? (
               <span className="flex items-center gap-2 justify-center">
@@ -234,6 +291,14 @@ const AIChatAssistant = () => {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
                 </span>
                 กำลังพูด...
+              </span>
+            ) : lunaState === 'listening' ? (
+              <span className="text-purple-600 font-medium flex items-center gap-2 justify-center">
+                ฟังอยู่...
+              </span>
+            ) : lunaState === 'thinking' ? (
+              <span className="text-indigo-600 font-medium flex items-center gap-2 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" /> กำลังค้นหาคำตอบ...
               </span>
             ) : (
               'พร้อมตอบทุกคำถามเกี่ยวกับโรงเรียน'

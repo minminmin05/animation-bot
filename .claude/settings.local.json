@@ -84,7 +84,16 @@
       "Bash(PORT=3002 timeout 10 npx tsx index.ts)",
       "Bash(PORT=3004 npx tsx index.ts)",
       "Bash(PORT=3005 npx tsx index.ts)",
-      "Bash(PORT=3006 timeout 10 npx tsx index.ts)"
+      "Bash(PORT=3006 timeout 10 npx tsx index.ts)",
+      "Bash(pkill -f \"node.*index.ts\")",
+      "Bash(taskkill /F /PID 5800)",
+      "Bash(taskkill //F //PID 5800)",
+      "Bash(tskill 5800)",
+      "Bash(powershell -c \"Stop-Process -Id 5800 -Force\")",
+      "Bash(powershell -c \"Stop-Process -Id 11620 -Force\")",
+      "Bash(python3 -m json.tool)",
+      "Bash(powershell -c \"Stop-Process -Id 5220 -Force\")",
+      "Bash(powershell -c \"Stop-Process -Id 4088 -Force\")"
     ]
   },
   "enableAllProjectMcpServers": true,

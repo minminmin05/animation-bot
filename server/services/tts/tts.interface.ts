@@ -3,7 +3,7 @@
  * Defines the contract that all TTS providers must implement
  */
 
-export type ProviderType = 'botnoi' | 'edge';
+export type ProviderType = 'empty' | 'botnoi' | 'edge';
 
 export interface TTSRequest {
   text: string;

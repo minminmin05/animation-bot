@@ -135,7 +135,7 @@ export async function getSettings(req: Request, res: Response) {
         model: process.env.MINIMAX_MODEL || process.env.GEMINI_MODEL || 'abab6.5s-chat'
       },
       tts: {
-        provider: systemSettings.tts_provider || 'botnoi'
+        provider: systemSettings.tts_provider || 'empty'
       },
       notifications: notificationSettings
     })
@@ -538,7 +538,7 @@ export async function updateTtsSettings(req: Request, res: Response) {
     console.log('[Settings API] Request body:', { provider })
 
     // Validate provider
-    const validProviders = ['botnoi', 'edge', 'google', 'openai']
+    const validProviders = ['empty', 'botnoi', 'edge', 'google', 'openai']
     if (!provider || !validProviders.includes(provider)) {
       console.error('[Settings API] Invalid provider:', provider)
       return res.status(400).json({

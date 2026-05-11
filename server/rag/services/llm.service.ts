@@ -282,6 +282,20 @@ Question: ${question}
   } catch (error) {
     console.error('[LLM] Error:', error)
 
+    // Fallback: return retrieved context if available
+    if (sources.length > 0 && !personalDataContext) {
+      const fallbackText = sources.map((s, i) =>
+        `[${i + 1}] ${s.content || s.text}`
+      ).join('\n\n')
+
+      return {
+        text: fallbackText,
+        emotion: 'helpful',
+        tts: fallbackText,
+        sources: sources.slice(0, 2)
+      }
+    }
+
     const fallbackText = 'ขออภัย ระบบไม่สามารถตอบได้ในขณะนี้ กรุณาลองใหม่ภายหลัง'
 
     return {

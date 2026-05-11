@@ -114,7 +114,7 @@ const NEGATIVE_PATTERNS = {
 }
 
 // Confidence threshold for using LLM fallback
-export const LLM_FALLBACK_THRESHOLD = 0.6
+export const LLM_FALLBACK_THRESHOLD = 0.5
 
 // Threshold for ambiguity detection
 const AMBIGUOUS_CONFIDENCE_DIFF = 0.15 // If scores are within this range, it's ambiguous

@@ -13,6 +13,13 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
 
 // TTS provider options
 const TTS_PROVIDERS = {
+  empty: {
+    id: 'empty',
+    name: 'ปิดใช้งาน TTS',
+    description: 'AI Assistant จะไม่มีเสียงพูด',
+    thaiDescription: 'ปิดการทำงานของระบบเสียงสังเคราะห์ AI Assistant จะตอบแต่ข้อความเท่านั้น ไม่มีเสียง',
+    badge: 'ปิดใช้งาน'
+  },
   botnoi: {
     id: 'botnoi',
     name: 'Botnoi Voice',
@@ -51,6 +58,9 @@ const AnimationPreview = lazy(() => import('../../animation-showcase/AnimationPr
 // Import emotion config directly (it's a small config file)
 import { emotionStates } from '../../animation-showcase/emotionConfig'
 
+// Import Luna assistant components (lazy loaded)
+import { useLunaSettings } from '../../hooks/useLunaSettings'
+
 // Embedding model options
 const EMBEDDING_MODELS = {
   openai: {
@@ -80,6 +90,9 @@ const EMBEDDING_MODELS = {
 const SystemSettings = () => {
   console.log('[SystemSettings] Component mounting...')
 
+  // Luna assistant settings
+  const { settings: lunaSettings, setStyle: setLunaStyle, setQuality: setLunaQuality } = useLunaSettings()
+
   const [activeTab, setActiveTab] = useState('general')
   const [isReady, setIsReady] = useState(true) // Component is ready by default
 
@@ -98,7 +111,7 @@ const SystemSettings = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
 
   // TTS settings state
-  const [ttsProvider, setTtsProvider] = useState('botnoi')
+  const [ttsProvider, setTtsProvider] = useState('empty')
   const [ttsLoading, setTtsLoading] = useState(false)
   const [savingTts, setSavingTts] = useState(false)
   const [ttsTestText, setTtsTestText] = useState('สวัสดีครับ ยินดีต้อนรับสู่โรงเรียนลุมายด์')
@@ -167,7 +180,7 @@ const SystemSettings = () => {
       const response = await fetch(`${API_BASE}/api/settings`)
       if (response.ok) {
         const data = await response.json()
-        setTtsProvider(data.tts?.provider || 'botnoi')
+        setTtsProvider(data.tts?.provider || 'empty')
       }
     } catch (error) {
       console.error('[Frontend] Failed to fetch TTS settings:', error)
@@ -209,7 +222,11 @@ const SystemSettings = () => {
       }
 
       setTtsProvider(providerId)
-      toast.success(`เปลี่ยนโมเดลเสียงเป็น ${TTS_PROVIDERS[providerId].name} สำเร็จ`)
+      if (providerId === 'empty') {
+        toast.success('ปิดใช้งานเสียงสังเคราะห์สำเร็จ')
+      } else {
+        toast.success(`เปลี่ยนโมเดลเสียงเป็น ${TTS_PROVIDERS[providerId].name} สำเร็จ`)
+      }
     } catch (error) {
       console.error('[Frontend] Error updating TTS provider:', error)
       toast.error(`ไม่สามารถเปลี่ยนโมเดลเสียงได้: ${error.message}`)
@@ -1274,6 +1291,7 @@ const SystemSettings = () => {
                 <div className="p-6 space-y-4">
                   {Object.values(TTS_PROVIDERS).map((provider) => {
                     const isComingSoon = provider.id === 'google' || provider.id === 'openai'
+                    const isEmpty = provider.id === 'empty'
                     const isDisabled = savingTts || isComingSoon
 
                     return (
@@ -1283,10 +1301,14 @@ const SystemSettings = () => {
                         disabled={isDisabled}
                         className={`w-full text-left p-5 rounded-xl border-2 transition-all ${
                           ttsProvider === provider.id
-                            ? 'border-accent bg-accent/5'
+                            ? isEmpty
+                              ? 'border-gray-400 bg-gray-100'
+                              : 'border-accent bg-accent/5'
                             : isComingSoon
-                            ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                            : 'border-cream-dark hover:border-accent/30 hover:bg-cream/20'
+                              ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                              : isEmpty
+                                ? 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+                                : 'border-cream-dark hover:border-accent/30 hover:bg-cream/20'
                         } ${savingTts ? 'opacity-50' : ''}`}
                         whileHover={!isDisabled ? { scale: 1.01 } : {}}
                         whileTap={!isDisabled ? { scale: 0.99 } : {}}
@@ -1294,20 +1316,23 @@ const SystemSettings = () => {
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
-                              <h4 className="font-semibold text-navy">{provider.name}</h4>
+                              <h4 className={`font-semibold ${isEmpty ? 'text-gray-600' : 'text-navy'}`}>{provider.name}</h4>
                               <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                isEmpty ? 'bg-gray-200 text-gray-600' :
                                 provider.id === 'botnoi' ? 'bg-sage/20 text-sage-dark' :
                                 provider.id === 'edge' ? 'bg-blue/20 text-blue-dark' :
                                 isComingSoon ? 'bg-amber/20 text-amber-dark' :
                                 'bg-gray-100 text-gray-500'
                               }`}>
-                                {isComingSoon ? 'Coming Soon' : provider.badge}
+                                {isEmpty ? 'ปิดเสียง' : isComingSoon ? 'Coming Soon' : provider.badge}
                               </span>
                             </div>
-                            <p className="text-sm text-text-secondary">{provider.thaiDescription}</p>
+                            <p className={`text-sm ${isEmpty ? 'text-gray-500' : 'text-text-secondary'}`}>{provider.thaiDescription}</p>
                           </div>
                           {ttsProvider === provider.id && (
-                            <div className="w-6 h-6 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                              isEmpty ? 'bg-gray-400' : 'bg-accent'
+                            }`}>
                               <Check size={14} className="text-white" strokeWidth={3} />
                             </div>
                           )}
@@ -1545,6 +1570,153 @@ const SystemSettings = () => {
 
         {activeTab === 'animation' && (
           <div className="space-y-6">
+            {/* Assistant Style Selection */}
+            <div className="card">
+              <div className="p-6 border-b border-cream-dark">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
+                    <Sparkles className="w-5 h-5 text-purple-600" strokeWidth={2} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-display font-semibold text-navy">
+                      ตัวช่วย AI (AI Assistant)
+                    </h2>
+                    <p className="text-sm text-text-muted">
+                      เลือกรูปแบบตัวช่วย AI และคุณภาพแอนิเมชัน
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 space-y-6">
+                {/* Assistant Style Selector */}
+                <div>
+                  <label className="block text-sm font-medium text-navy mb-3">
+                    รูปแบบตัวช่วย AI
+                  </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Luna Assistant - NEW DEFAULT */}
+                    <motion.button
+                      onClick={() => setLunaStyle('luna')}
+                      className={`relative p-5 rounded-xl border-2 transition-all text-left ${
+                        lunaSettings.style === 'luna'
+                          ? 'border-purple-500 bg-purple-50 shadow-medium'
+                          : 'border-cream-dark hover:border-purple-300 hover:bg-purple-50/20'
+                      }`}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
+                          <span className="text-2xl">🌙</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-semibold text-navy">Luna Assistant</h4>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                              ใหม่
+                            </span>
+                          </div>
+                          <p className="text-sm text-text-secondary mb-2">
+                            วิญญาณพระจันทร์แห่งความรู้ - สงบ สุขุม เหมือนมีชีวิต
+                          </p>
+                          <ul className="text-xs text-text-muted space-y-1">
+                            <li>✨ แอนิเมชันลื่นไหลเป็นธรรมชาติ</li>
+                            <li>🌙 ดีไซน์ทันสมัยและเรียบง่าย</li>
+                            <li>🎭 รองรับสถานะอารมณ์หลากหลาย</li>
+                          </ul>
+                        </div>
+                      </div>
+                      {lunaSettings.style === 'luna' && (
+                        <div className="absolute top-4 right-4 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
+                          <Check size={12} className="text-white" strokeWidth={3} />
+                        </div>
+                      )}
+                    </motion.button>
+
+                    {/* Legacy Assistant - FALLBACK */}
+                    <motion.button
+                      onClick={() => setLunaStyle('legacy')}
+                      className={`relative p-5 rounded-xl border-2 transition-all text-left ${
+                        lunaSettings.style === 'legacy'
+                          ? 'border-accent bg-accent/5 shadow-medium'
+                          : 'border-cream-dark hover:border-accent/30 hover:bg-cream/20'
+                      }`}
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.99 }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-accent/10 to-accent/5 flex items-center justify-center flex-shrink-0">
+                          <span className="text-2xl">👤</span>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="font-semibold text-navy">Legacy Assistant</h4>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                              คลาสสิก
+                            </span>
+                          </div>
+                          <p className="text-sm text-text-secondary mb-2">
+                            น้องหน่อย - ตัวละครดั้งเดิม
+                          </p>
+                          <ul className="text-xs text-text-muted space-y-1">
+                            <li>📊 แสดงสถานะด้วยสีที่ชัดเจน</li>
+                            <li>🎨 15 สถานะอารมณ์</li>
+                            <li>💪 เบากว่า เหมาะกับเครื่องจักรเก่า</li>
+                          </ul>
+                        </div>
+                      </div>
+                      {lunaSettings.style === 'legacy' && (
+                        <div className="absolute top-4 right-4 w-5 h-5 bg-accent rounded-full flex items-center justify-center">
+                          <Check size={12} className="text-white" strokeWidth={3} />
+                        </div>
+                      )}
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* Quality Level Selector */}
+                {lunaSettings.style === 'luna' && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="pt-4 border-t border-cream-dark"
+                  >
+                    <label className="block text-sm font-medium text-navy mb-3">
+                      คุณภาพแอนิเมชัน
+                    </label>
+                    <div className="grid grid-cols-3 gap-3">
+                      {(['high', 'medium', 'low']).map((level) => (
+                        <motion.button
+                          key={level}
+                          onClick={() => setLunaQuality(level)}
+                          className={`p-4 rounded-xl border-2 transition-all ${
+                            lunaSettings.quality === level
+                              ? 'border-purple-500 bg-purple-50'
+                              : 'border-cream-dark hover:border-purple-300'
+                          }`}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                        >
+                          <div className="text-center">
+                            <p className="font-medium text-navy mb-1">
+                              {level === 'high' ? 'สูง' : level === 'medium' ? 'ปานกลาง' : 'ต่ำ'}
+                            </p>
+                            <p className="text-xs text-text-muted">
+                              {level === 'high' ? 'เอฟเฟกต์ครบถ้วน' : level === 'medium' ? 'ลดเอฟเฟกต์บางส่วน' : 'เบาสุด'}
+                            </p>
+                          </div>
+                        </motion.button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-text-muted mt-2">
+                      💡 เลือกคุณภาพต่ำหากเครื่องจักรมีประสิทธิภาพน้อยหรือใช้งานบนมือถือ
+                    </p>
+                  </motion.div>
+                )}
+              </div>
+            </div>
+
             {/* Animation Section Header */}
             <div className="card">
               <div className="p-6 border-b border-cream-dark">
