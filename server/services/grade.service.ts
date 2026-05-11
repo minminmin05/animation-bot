@@ -551,17 +551,28 @@ export async function searchStudentsByName(
  */
 export function extractStudentName(question: string): string | null {
   const patterns = [
-    /(?:for|of|student)\s+["']?([A-Za-z฀-๿\s]+?)["']?(?:\s|$|\.|,)/i,
-    /(?:นักเรียน|คน|ชื่อ)\s*["']?([A-Za-z฀-๿\s]+?)["']?(?:\s|$|\.|,)/,
-    /show\s+(?:grades|attendance|schedule)\s+(?:for|of)\s+["']?([A-Za-z฀-๿\s]+?)["']?(?:\s|$|\.|,)/i
+    // English patterns - more specific
+    /(?:for|of)\s+["']?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)["']?(?:\s+['']?s?(?:grade|score|attendance))/i,
+    /show\s+(?:grades?|attendance|schedule)\s+(?:for|of)\s+["']?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)["']?(?:\s|$)/i,
+    // Thai patterns - "ขอข้อมูลของ [Name] มี..." (extract name before data keyword)
+    /ขอ(?:ข้อมูล|เกรด|คะแนน|ผลสอบ).*ของ\s+["']?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)["']?(?=\s+มี|\s+คือ|\s+ว่า|\s+ทั้งหมด|$)/i,
+    /(?:เกรด|คะแนน|ข้อมูล).*ของ\s+["']?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)["']?(?=\s+มี|\s+คือ|\s+ว่า|\s+ทั้งหมด|$)/i,
+    // Direct name followed by data keyword - "[Name] grades"
+    /^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(?:มี.*เกรด|grades?|scores?|คะแนน)(?=\s|$)/i,
+    // "[Name]'s grades" pattern
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)['']?s\s+(?:grades?|scores?|คะแนน|เกรด)/i,
   ]
 
   for (const pattern of patterns) {
     const match = question.match(pattern)
     if (match && match[1]) {
       const name = match[1].trim()
-      // Filter out common non-name words
-      if (name.length > 1 && ! /^(me|my|all|the|a|an|มี|ของ|ฉัน|ทุก|ทั้งหมด)$/i.test(name)) {
+      // Filter out common non-name words and ensure name looks valid
+      if (name.length > 1 &&
+          !/^(me|my|all|the|a|an|มี|ของ|ฉัน|ทุก|ทั้งหมด|ข้อมูล|เกรด|คะแนน|ผลสอบ|มี|คือ|ว่า|ทั้งหมด)$/i.test(name) &&
+          // Name should be title case (like "Ava Martinez") or Thai
+          (/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/.test(name) || /[ก-ฮ]/.test(name))) {
+        console.log('[extractStudentName] Found name:', name, 'from pattern:', pattern)
         return name
       }
     }

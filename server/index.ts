@@ -308,6 +308,85 @@ app.post('/api/rag/ask', async (req, res) => {
       }
     }
 
+    // Check if this is a database list query (asking for names/lists)
+    const listKeywords = /มี.*นักเรียน.*ชื่ออะไร|รายชื่อ(นักเรียน|ครู|คน)|นักเรียน.*ทั้งหมด|ครู.*ทั้งหมด|แสดง.*รายชื่อ|ชื่อ.*(นักเรียน|ครู|คน).*บ้าง|โรงเรียน.*มี(ใคร|อะไร).*บ้าง|ดู.*รายชื่อ|list.*all.*students|show.*all.*students|who.*are.*the.*students/i
+    if (listKeywords.test(question)) {
+      console.log('[API] Database list query detected, querying database...')
+      try {
+        const { createClient } = await import('@supabase/supabase-js')
+        const supabase = createClient(
+          process.env.SUPABASE_URL!,
+          process.env.SUPABASE_SERVICE_KEY!
+        )
+
+        // Determine what to list
+        let listContext = ''
+        let queryExecuted = false
+
+        // Check if asking for students
+        if (/นักเรียน|students/i.test(question)) {
+          const { data: students, error } = await supabase
+            .from('students')
+            .select('name, id')
+            .limit(50)
+
+          if (!error && students && students.length > 0) {
+            const studentNames = students.map(s => s.name).join(', ')
+            listContext += `รายชื่อนักเรียนทั้งหมด (${students.length} คน):\n${studentNames}\n\n`
+            queryExecuted = true
+          }
+        }
+
+        // Check if asking for teachers
+        if (/ครู|teachers/i.test(question)) {
+          const { data: teachers, error } = await supabase
+            .from('teachers')
+            .select('name, id')
+            .limit(50)
+
+          if (!error && teachers && teachers.length > 0) {
+            const teacherNames = teachers.map(t => t.name).join(', ')
+            listContext += `รายชื่อครูทั้งหมด (${teachers.length} คน):\n${teacherNames}\n\n`
+            queryExecuted = true
+          }
+        }
+
+        // If asking generally "who/what in the school", show both
+        if (!queryExecuted && (/ใคร|อะไร.*บ้าง|who|what/i.test(question))) {
+          // Get students
+          const { data: students } = await supabase
+            .from('students')
+            .select('name')
+            .limit(20)
+
+          // Get teachers
+          const { data: teachers } = await supabase
+            .from('teachers')
+            .select('name')
+            .limit(20)
+
+          listContext = `ข้อมูลในระบบ:\n\n`
+
+          if (students && students.length > 0) {
+            listContext += `นักเรียน (${students.length} คน): ${students.map(s => s.name).join(', ')}\n\n`
+          }
+
+          if (teachers && teachers.length > 0) {
+            listContext += `ครู (${teachers.length} คน): ${teachers.map(t => t.name).join(', ')}\n\n`
+          }
+
+          queryExecuted = true
+        }
+
+        if (queryExecuted && listContext) {
+          statisticsContext = listContext
+          console.log('[API] List query context generated successfully')
+        }
+      } catch (error) {
+        console.error('[API] Error fetching list data:', error)
+      }
+    }
+
     // Proceed with RAG (or use statistics context if available)
     console.log(`[API] Generating embedding...`)
     const embedding = await generateEmbedding(question)

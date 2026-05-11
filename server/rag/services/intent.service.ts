@@ -64,7 +64,18 @@ const INTENT_PATTERNS = {
     /โรงเรียน.*มี(กี่|อะไร|อย่างไร)/,
     /ทั้งหมด.*กี่/,
     // General questions about school
-    /สถานที่|ห้อง|อาคาร|โรงเรียน/
+    /สถานที่|ห้อง|อาคาร|โรงเรียน/,
+    // Database list queries - asking for lists/names from database
+    /มี.*นักเรียน.*ชื่ออะไร/,
+    /รายชื่อ(นักเรียน|ครู|คน)/,
+    /นักเรียน.*ทั้งหมด|ครู.*ทั้งหมด/,
+    /แสดง.*รายชื่อ/,
+    /ชื่อ.*(นักเรียน|ครู|คน).*บ้าง/,
+    /โรงเรียน.*มี(ใคร|อะไร).*บ้าง/,
+    /ดู.*รายชื่อ/,
+    /list.*all.*students|show.*all.*students/i,
+    /who.*are.*the.*students/i,
+    /what.*students.*(do|are|have)/i
   ],
 
   // PERSONAL_DATA: grades, attendance, personal info
@@ -91,7 +102,16 @@ const INTENT_PATTERNS = {
     /ฉัน\s+ลา\s*กี่.*วน|มาสาย.*ฉัน/,
     /ฉัน\s+ได้.*คะแนน|คะแนน.*ฉัน.*ได้/,
     /เกรด.*ฉัน|ผล.*ฉัน/,
-    /กี่.*วัน.*ฉัน.*/
+    /กี่.*วัน.*ฉัน.*/,
+    // Thai admin patterns - requesting data for a specific person by name
+    /ขอ(ข้อมูล|เกรด|คะแนน|ผลสอบ).*ของ\s+[a-z฀-๿]+/i,
+    /เกรดของ\s+[a-z฀-๿]+/,
+    /คะแนนของ\s+[a-z฀-๿]+/,
+    /ข้อมูลของ\s+[a-z฀-๿]+/,
+    // English admin patterns
+    /(grade|score|attendance).*\s+for\s+[a-z]+/i,
+    /show\s+[a-z]+['']?s?\s+(grade|score|attendance)/i,
+    /[a-z]+['']?s?\s+(grades?|scores?|attendance)/i
   ]
 }
 
@@ -197,18 +217,45 @@ export function classifyIntent(
 ): IntentClassification {
   const q = question.toLowerCase().trim()
 
-  // Check for student name pattern first (admin queries like "show grades for John")
-  const studentNamePattern = /(?:show|get|what(?:'s| is)|tell me)(?:\s+\w+){0,3}\s+(?:for|of)\s+["']?([A-Z][a-z฀-๿]+(?:\s+[A-Z][a-z฀-๿]+)?)["']?/i
-  const studentNameMatch = q.match(studentNamePattern)
-  const hasStudentName = studentNameMatch && studentNameMatch[1] && !/^(me|my|all|the|a|an)$/i.test(studentNameMatch[1])
+  // ============================================================
+  // ADMIN QUERY DETECTION - Check for specific student/teacher data requests
+  // ============================================================
 
-  // If student name is detected with data keywords, treat as PERSONAL_DATA
-  if (hasStudentName && /(grade|score|attendance|schedule|class|subject|วิชา|เกรด|คะแนน|การมาเรียน|ตาราง)/i.test(q)) {
+  // Pattern 1: Thai-style queries - "ขอข้อมูลของ [Name]", "เกรดของ [Name]"
+  const thaiAdminPattern = /ขอ(ข้อมูล|เกรด|คะแนน|ผลสอบ).*ของ\s+([a-z฀-๿]+(?:\s+[a-z฀-๿]+)*)/i
+  const thaiNameMatch = q.match(thaiAdminPattern)
+
+  // Pattern 2: English-style queries - "grades for [Name]", "show [Name]'s grades"
+  const englishAdminPattern = /(grade|score|attendance|schedule|class|subject).*\s+(?:for|of)\s+([a-z]+(?:\s+[a-z]+)*)/i
+  const englishNameMatch = q.match(englishAdminPattern)
+
+  // Pattern 3: Direct name with data keyword - "[Name]'s grades", "Ava Martinez grades"
+  const directNamePattern = /([a-z฀-๿]+(?:\s+[a-z฀-๿]+){1,2}).*?\s+(เกรด|คะแนน|grades?|scores?|attendance)/i
+  const directNameMatch = q.match(directNamePattern)
+
+  // Pattern 4: "ข้อมูลของ [Name]" (data of [Name])
+  const dataOfPattern = /ข้อมูล.*ของ\s+([a-z฀-๿]+(?:\s+[a-z฀-๿]+)*)/i
+  const dataOfMatch = q.match(dataOfPattern)
+
+  // Extract name from any matched pattern
+  let extractedName: string | null = null
+  if (thaiNameMatch?.[2]) extractedName = thaiNameMatch[2]
+  else if (englishNameMatch?.[2]) extractedName = englishNameMatch[2]
+  else if (directNameMatch?.[1]) extractedName = directNameMatch[1]
+  else if (dataOfMatch?.[1]) extractedName = dataOfMatch[1]
+
+  // Check if this looks like an admin query (has name + data keyword)
+  const hasDataKeyword = /(grade|score|attendance|schedule|class|subject|วิชา|เกรด|คะแนน|การมาเรียน|ตาราง|ข้อมูล)/i.test(q)
+  const isAdminQuery = extractedName && hasDataKeyword && !/^(me|my|i|ฉัน|ของฉัน)$/i.test(extractedName)
+
+  if (isAdminQuery) {
     return {
       intent: Intent.PERSONAL_DATA,
       confidence: 0.95,
-      reasoning: 'Detected student name with data keyword - admin query',
-      suggestedAction: userContext?.userId ? 'Fetch data for specified student' : 'Authentication required'
+      reasoning: `Detected admin query for student "${extractedName}" with data keyword`,
+      suggestedAction: userContext?.userId
+        ? `Fetch personal data for "${extractedName}"`
+        : 'Authentication required for personal data access'
     }
   }
 

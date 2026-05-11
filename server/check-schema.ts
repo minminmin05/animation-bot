@@ -1,36 +1,29 @@
 import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-)
+import dotenv from 'dotenv'
+dotenv.config()
 
 async function checkSchema() {
-  // Check the knowledge_base table schema
-  const { data: columns, error } = await supabase
-    .rpc('get_table_schema', { table_name: 'knowledge_base' })
-    .catch(async () => {
-      // Alternative: try to get column info directly
-      const { data } = await supabase
-        .from('knowledge_base')
-        .select('*')
-        .limit(1)
-      
-      if (data && data.length > 0) {
-        console.log('Sample row structure:', Object.keys(data[0]))
-        console.log('Sample values:', data[0])
-      }
-      return { data: null }
-    })
+  const supabase = createClient(
+    process.env.SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_KEY!
+  )
 
-  // Get sample data to infer schema
-  const { data: sample } = await supabase
-    .from('knowledge_base')
+  console.log('Checking students table...')
+
+  // Try to get a sample row to see column names
+  const { data, error } = await supabase
+    .from('students')
     .select('*')
     .limit(1)
 
-  console.log('Knowledge Base Schema (from sample):')
-  console.log(JSON.stringify(sample, null, 2))
+  if (error) {
+    console.error('Error:', error.message)
+  } else if (data && data.length > 0) {
+    console.log('Column names:', Object.keys(data[0]))
+    console.log('Sample data:', JSON.stringify(data[0], null, 2))
+  } else {
+    console.log('No data found, table might be empty')
+  }
 }
 
 checkSchema().catch(console.error)

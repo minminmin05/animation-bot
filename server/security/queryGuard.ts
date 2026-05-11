@@ -20,43 +20,41 @@ export interface GuardResult {
 /**
  * Patterns that should be BLOCKED
  *
- * IMPORTANT: Keep patterns specific to data access attempts.
- * Allow legitimate policy questions like "Does everyone need to wear uniforms?"
+ * IMPORTANT: Keep patterns specific to sensitive data access attempts.
+ * Allow legitimate general information questions like "How many students?"
  */
 const BLOCK_PATTERNS = [
-  // Multi-user data access attempts - Thai (context-specific)
-  /ทั้งหมด/,
-  /ของคนอื่น/,
-  /ของเพื่อน/,
-  /นักเรียนทั้งหมด/,
-  /ทุกนักเรียน/,
-  /คนอื่น/,
-  /เพื่อน/,
-  /รายชื่อนักเรียน/,
+  // Multi-user SENSITIVE data access attempts - Thai (block ONLY with sensitive keywords)
+  /ทั้งหมด.*(เกรด|คะแนน|ผลสอบ|attendance|สอบ|ประวัติ|phone|address|เบอร์โทร|ที่อยู่)/, // "all [sensitive data]"
+  /ของคนอื่น.*(เกรด|คะแนน|ผลสอบ|สอบ)/,
+  /ของเพื่อน.*(เกรด|คะแนน|ผลสอบ|สอบ)/,
+  /นักเรียนทั้งหมด.*(เกรด|คะแนน|ผลสอบ|สอบ)/, // block ONLY with grades/scores
+  /ทุกนักเรียน.*(เกรด|คะแนน|ผลสอบ|สอบ)/,
+  /คนอื่น.*(เกรด|คะแนน|ผลสอบ|สอบ)/,
+  /เพื่อน.*(เกรด|คะแนน|ผลสอบ|สอบ)/,
+  /รายชื่อนักเรียน.*(เกรด|คะแนน|ผลสอบ|สอบ)/, // block "list students [with grades]"
   /ข้อมูลทุกคน/,
-  /รายชื่อ.*ทุกคน/, // "list everyone"
-  /ทุกคน.*(เกรด|คะแนน|ข้อมูล|สอบ|attendance)/, // only with data keywords
-  /นักเรียนทุกคน.*(เกรด|คะแนน|ข้อมูล)/, // only with data keywords
+  /รายชื่อ.*ทุกคน.*(เกรด|คะแนน|สอบ)/,
+  /ทุกคน.*(เกรด|คะแนน|ข้อมูล|สอบ|attendance)/,
+  /นักเรียนทุกคน.*(เกรด|คะแนน|ข้อมูล)/,
 
-  // Multi-user data access attempts - English (context-specific)
-  /all students/i,
-  /every student/i,
-  /other users/i,
-  /someone else/i,
-  /my friend/i,
-  /my friends/i,
-  /classmates/i,
-  /show all/i,
-  /list all/i,
+  // Multi-user SENSITIVE data access attempts - English (block ONLY with sensitive keywords)
+  /all students.*\s+(grades|scores|gpa|attendance|schedule|phone|address)/i, // "all students [sensitive data]"
+  /every student.*\s+(grades|scores|gpa|attendance)/i,
+  /other users.*\s+(grades|scores|data|information)/i,
+  /someone else.*\s+(grades|scores|data)/i,
+  /my friend.*\s+(grades|scores|data)/i,
+  /my friends.*\s+(grades|scores|data)/i,
+  /classmates.*\s+(grades|scores|gpa)/i,
   /all grades/i,
-  /all data/i,
+  /all.*attendance/i,
+  /all.*gpa/i,
   /show me everything/i,
   /show everything/i,
   /everyone'?s\s+(grades|data|scores|attendance|schedule|information)/i,
-  /everyone.*(grades|scores|data)/i,
-  /get\s+everyone/i,
-  /show\s+everyone/i,
-  /everyone'?s\b.*(?!required|need|must|have)/i, // block "everyone's" but allow policy questions
+  /everyone.*(grades|scores|data|gpa|attendance)/i,
+  /get\s+everyone.*\s+(grades|data|scores|gpa)/i,
+  /show\s+everyone.*\s+(grades|data|scores|gpa)/i,
 
   // Prompt injection / system override attempts
   /ignore previous/i,

@@ -1,9 +1,8 @@
-async function testAPIEncoding() {
-  const question = 'มีนักเรียนกี่คน'
+async function testListQuery() {
+  const question = 'มีนักเรียนชื่ออะไรบ้างในระบบ'
 
-  console.log('Testing API encoding...')
+  console.log('Testing list query...')
   console.log(`Original question: "${question}"`)
-  console.log(`UTF-8 bytes: ${Array.from(new TextEncoder().encode(question)).map(b => '0x' + b.toString(16)).join(' ')}`)
   console.log('')
 
   try {
@@ -25,4 +24,4 @@ async function testAPIEncoding() {
   }
 }
 
-testAPIEncoding()
+testListQuery()
