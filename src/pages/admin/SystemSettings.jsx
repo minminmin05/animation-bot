@@ -174,19 +174,38 @@ const SystemSettings = () => {
 
     try {
       setSavingTts(true)
+
+      // Try to get auth token, but don't require it for TTS changes
+      let headers = { 'Content-Type': 'application/json' }
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        headers['Authorization'] = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch(`${API_BASE}/api/settings/tts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ provider: providerId })
       })
 
-      if (!response.ok) throw new Error('Failed to update TTS provider')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        if (response.status === 401) {
+          toast.error('กรุณาเข้าสู่ระบบใหม่')
+          return
+        }
+        if (response.status === 403) {
+          toast.error('คุณไม่มีสิทธิ์เข้าถึงการตั้งค่านี้ (Admin เท่านั้น)')
+          return
+        }
+        throw new Error(errorData.error || errorData.message || 'Failed to update TTS provider')
+      }
 
       setTtsProvider(providerId)
       toast.success(`เปลี่ยนโมเดลเสียงเป็น ${TTS_PROVIDERS[providerId].name} สำเร็จ`)
     } catch (error) {
       console.error('[Frontend] Error updating TTS provider:', error)
-      toast.error('ไม่สามารถเปลี่ยนโมเดลเสียงได้')
+      toast.error(`ไม่สามารถเปลี่ยนโมเดลเสียงได้: ${error.message}`)
     } finally {
       setSavingTts(false)
     }
@@ -948,44 +967,52 @@ const SystemSettings = () => {
                   </h3>
                 </div>
                 <div className="p-6 space-y-4">
-                  {Object.values(TTS_PROVIDERS).map((provider) => (
-                    <motion.button
-                      key={provider.id}
-                      onClick={() => !savingTts && handleTtsProviderChange(provider.id)}
-                      disabled={savingTts}
-                      className={`w-full text-left p-5 rounded-xl border-2 transition-all ${
-                        ttsProvider === provider.id
-                          ? 'border-accent bg-accent/5'
-                          : 'border-cream-dark hover:border-accent/30 hover:bg-cream/20'
-                      } ${savingTts ? 'opacity-50 cursor-not-allowed' : ''}`}
-                      whileHover={!savingTts ? { scale: 1.01 } : {}}
-                      whileTap={!savingTts ? { scale: 0.99 } : {}}
-                    >
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <h4 className="font-semibold text-navy">{provider.name}</h4>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              provider.id === 'botnoi' ? 'bg-sage/20 text-sage-dark' :
-                              provider.id === 'edge' ? 'bg-blue/20 text-blue-dark' :
-                              'bg-gray-100 text-gray-500'
-                            }`}>
-                              {provider.badge}
-                            </span>
+                  {Object.values(TTS_PROVIDERS).map((provider) => {
+                    const isComingSoon = provider.id === 'google' || provider.id === 'openai'
+                    const isDisabled = savingTts || isComingSoon
+
+                    return (
+                      <motion.button
+                        key={provider.id}
+                        onClick={() => !isDisabled && handleTtsProviderChange(provider.id)}
+                        disabled={isDisabled}
+                        className={`w-full text-left p-5 rounded-xl border-2 transition-all ${
+                          ttsProvider === provider.id
+                            ? 'border-accent bg-accent/5'
+                            : isComingSoon
+                            ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                            : 'border-cream-dark hover:border-accent/30 hover:bg-cream/20'
+                        } ${savingTts ? 'opacity-50' : ''}`}
+                        whileHover={!isDisabled ? { scale: 1.01 } : {}}
+                        whileTap={!isDisabled ? { scale: 0.99 } : {}}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <h4 className="font-semibold text-navy">{provider.name}</h4>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                provider.id === 'botnoi' ? 'bg-sage/20 text-sage-dark' :
+                                provider.id === 'edge' ? 'bg-blue/20 text-blue-dark' :
+                                isComingSoon ? 'bg-amber/20 text-amber-dark' :
+                                'bg-gray-100 text-gray-500'
+                              }`}>
+                                {isComingSoon ? 'Coming Soon' : provider.badge}
+                              </span>
+                            </div>
+                            <p className="text-sm text-text-secondary">{provider.thaiDescription}</p>
                           </div>
-                          <p className="text-sm text-text-secondary">{provider.thaiDescription}</p>
+                          {ttsProvider === provider.id && (
+                            <div className="w-6 h-6 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
+                              <Check size={14} className="text-white" strokeWidth={3} />
+                            </div>
+                          )}
+                          {savingTts && ttsProvider !== provider.id && (
+                            <Loader2 size={16} className="animate-spin text-accent" />
+                          )}
                         </div>
-                        {ttsProvider === provider.id && (
-                          <div className="w-6 h-6 bg-accent rounded-full flex items-center justify-center flex-shrink-0">
-                            <Check size={14} className="text-white" strokeWidth={3} />
-                          </div>
-                        )}
-                        {savingTts && ttsProvider !== provider.id && (
-                          <Loader2 size={16} className="animate-spin text-accent" />
-                        )}
-                      </div>
-                    </motion.button>
-                  ))}
+                      </motion.button>
+                    )
+                  })}
                 </div>
               </div>
             )}

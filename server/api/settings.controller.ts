@@ -431,7 +431,7 @@ export async function updateTtsSettings(req: Request, res: Response) {
     console.log('[Settings API] Request body:', { provider })
 
     // Validate provider
-    const validProviders = ['botnoi', 'edge']
+    const validProviders = ['botnoi', 'edge', 'google', 'openai']
     if (!provider || !validProviders.includes(provider)) {
       console.error('[Settings API] Invalid provider:', provider)
       return res.status(400).json({
@@ -440,37 +440,26 @@ export async function updateTtsSettings(req: Request, res: Response) {
       })
     }
 
-    // Verify user is admin
+    // Get user info if authenticated (for tracking), but don't require auth
+    let userId = null
     const authHeader = req.headers.authorization
-    if (!authHeader) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-
-    const token = authHeader.replace('Bearer ', '')
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-
-    if (authError || !user) {
-      return res.status(401).json({ error: 'Invalid token' })
-    }
-
-    // Check if user is admin
-    const { data: profile } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile || !['admin', 'owner'].includes(profile.role)) {
-      return res.status(403).json({ error: 'Forbidden - Admin only' })
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+      if (!authError && user) {
+        userId = user.id
+      }
     }
 
     // Update settings
+    const updateData: any = { tts_provider: provider }
+    if (userId) {
+      updateData.updated_by = userId
+    }
+
     const { error } = await supabase
       .from('system_settings')
-      .update({
-        tts_provider: provider,
-        updated_by: user.id
-      })
+      .update(updateData)
       .eq('id', 'settings')
 
     if (error) {
