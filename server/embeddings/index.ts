@@ -8,11 +8,11 @@
 import { localEmbed, MODEL_NAME as LOCAL_MODEL, EMBEDDING_DIM as LOCAL_DIM } from './localEmbed.js'
 
 // Lazy import for OpenAI to avoid errors when API key is missing
-let openaiModule: typeof import('./openEmbed.js') | null = null
+let openaiModule: typeof import('./openaiEmbed.js') | null = null
 
 async function getOpenAI() {
   if (!openaiModule) {
-    openaiModule = await import('./openEmbed.js')
+    openaiModule = await import('./openaiEmbed.js')
   }
   return openaiModule
 }

@@ -34,6 +34,16 @@ export const generateSpeech = async (req: Request, res: Response) => {
     // Generate speech with automatic fallback
     const { filePath, contentType, providerUsed } = await generateSpeechWithFallback(text, emotion);
 
+    // Check if TTS was skipped (no provider configured)
+    if (providerUsed === 'none') {
+      console.log('[TTS Controller] No TTS provider configured, returning empty response');
+      return res.json({
+        success: true,
+        skipped: true,
+        reason: 'No TTS provider configured'
+      });
+    }
+
     console.log(`[TTS Controller] Sending audio file (provider: ${providerUsed}, type: ${contentType})`);
 
     // Set content type based on provider response
@@ -44,7 +54,13 @@ export const generateSpeech = async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error('[TTS Controller] Fatal Error:', error.message);
-    res.status(500).json({ error: `Failed to generate speech: ${error.message}` });
+
+    // Return JSON error instead of crashing
+    return res.status(500).json({
+      success: false,
+      error: `Failed to generate speech: ${error.message}`,
+      skipped: true
+    });
   }
 };
 

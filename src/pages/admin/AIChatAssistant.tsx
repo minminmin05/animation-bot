@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Send, Bot, User, Sparkles, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { askAI } from '../../services/embedding/embeddingService'
+import { askAI, getChatHistory } from '../../services/embedding/embeddingService'
 import { LunaAssistant } from '../../components/luna-assistant/LunaAssistant'
 import { generateSpeech } from '../../services/api/ttsService'
 import { useLipSync } from '../../hooks/useLipSync'
@@ -27,13 +27,14 @@ const emotionToReaction: Record<string, string> = {
 
 const AIChatAssistant = () => {
   const { user, userRole } = useAuth()
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<any[]>([
     {
       id: 1,
       type: 'ai',
       text: 'สวัสดีค่ะ/ครับ! ผมคือผู้ช่วย AI ของโรงเรียน มีอะไรให้ช่วยไหมคะ/ครับ?'
     }
   ])
+  const [sessionId, setSessionId] = useState<string | null>(localStorage.getItem('ai_chat_session_id'))
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [ttsLoading, setTtsLoading] = useState(false)
@@ -41,70 +42,54 @@ const AIChatAssistant = () => {
   const [lunaState, setLunaState] = useState<LunaState>('idle')
   const [reaction, setReaction] = useState<string | undefined>()
 
-  // States for synchronized typing
-  const [typingText, setTypingText] = useState('')
-  const [fullResponseText, setFullResponseText] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
-
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
   const mouthOpen = useLipSync(audioEl)
 
-  // Sync typing with audio time using requestAnimationFrame for smoothness
+  // Reset Luna state when audio ends
   useEffect(() => {
-    if (!audioEl || !isTyping || !fullResponseText) return;
-
-    let rafId: number;
-
-    const updateTyping = () => {
-      if (audioEl.duration > 0) {
-        const progress = audioEl.currentTime / audioEl.duration;
-        // Calculate characters based on progress
-        const charCount = Math.ceil(progress * fullResponseText.length);
-
-        // Only update if character count has changed to avoid unnecessary renders
-        setTypingText(fullResponseText.substring(0, Math.max(1, charCount)));
-      }
-
-      if (isTyping) {
-        rafId = requestAnimationFrame(updateTyping);
-      }
-    };
+    if (!audioEl) return;
 
     const handleEnded = () => {
-      cancelAnimationFrame(rafId);
-      // Ensure full text is shown at the end
-      setTypingText(fullResponseText);
-
-      // Move typing text to messages list
-      setMessages(prev => [...prev, {
-        id: Date.now(),
-        type: 'ai',
-        text: fullResponseText
-      }]);
-
-      // Reset typing states
-      setIsTyping(false);
-      setTypingText('');
-      setFullResponseText('');
-      setLunaState('idle')
+      setLunaState('idle');
     };
 
-    rafId = requestAnimationFrame(updateTyping);
     audioEl.addEventListener('ended', handleEnded);
-
     return () => {
-      cancelAnimationFrame(rafId);
       audioEl.removeEventListener('ended', handleEnded);
     };
-  }, [audioEl, isTyping, fullResponseText]);
+  }, [audioEl]);
+
+  // Load chat history
+  useEffect(() => {
+    if (sessionId && user?.id) {
+      console.log(`[AIChat] Fetching history for session: ${sessionId}`);
+      getChatHistory(sessionId, user.id)
+        .then(data => {
+          if (data.history && data.history.length > 0) {
+            console.log(`[AIChat] Restored ${data.history.length} messages from session`);
+            const loadedMessages = data.history.map((msg: any) => ({
+              id: msg.id,
+              type: msg.role === 'user' ? 'user' : 'ai',
+              text: msg.content
+            })).reverse();
+            setMessages(loadedMessages);
+          }
+        })
+        .catch(err => {
+          console.error('[AIChat] Failed to fetch history:', err);
+          localStorage.removeItem('ai_chat_session_id');
+          setSessionId(null);
+        });
+    }
+  }, [sessionId, user?.id]);
 
   const speak = async (text: string, currentEmotion: string) => {
     try {
-      console.log(`[AIChat] Starting TTS for: "${text.substring(0, 30)}..."`);
+      console.log(`[AIChat] TTS start for: "${text.substring(0, 30)}..."`);
       setTtsLoading(true)
 
       const audioUrl = await generateSpeech(text, currentEmotion)
-      console.log('[AIChat] Received audio URL:', audioUrl);
+      console.log('[AIChat] TTS finish. Received audio URL:', audioUrl);
 
       if (audioEl) {
         // Clean up previous URL if any
@@ -117,23 +102,18 @@ const AIChatAssistant = () => {
 
         // Wait for metadata to ensure duration is available
         const onMetadata = () => {
-          console.log(`[AIChat] Audio metadata loaded. Duration: ${audioEl.duration}s`);
           audioEl.removeEventListener('loadedmetadata', onMetadata);
 
-          // Start typing and playing simultaneously
-          setIsTyping(true);
-          setFullResponseText(text);
-          setTypingText('');
           setLunaState('talking')
-
+          
+          console.log('[AIChat] Audio play start');
+          console.log('[AIChat] Lip-sync start');
           const playPromise = audioEl.play();
+          
           if (playPromise !== undefined) {
             playPromise.catch(error => {
-              console.error('[AIChat] Audio play failed:', error);
-              // Fallback: Just show text if audio fails
-              setIsTyping(false);
+              console.error('[AIChat] Audio play / lip-sync failure:', error);
               setLunaState('idle')
-              setMessages(prev => [...prev, { id: Date.now(), type: 'ai', text }]);
             });
           }
         };
@@ -142,9 +122,7 @@ const AIChatAssistant = () => {
         audioEl.load();
       }
     } catch (error) {
-      console.error('[AIChat] TTS Error:', error)
-      // Fallback: Show text even if TTS fails
-      setMessages(prev => [...prev, { id: Date.now(), type: 'ai', text }]);
+      console.error('[AIChat] TTS failure:', error)
       setLunaState('idle')
     } finally {
       setTtsLoading(false)
@@ -153,7 +131,7 @@ const AIChatAssistant = () => {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || loading || isTyping) return
+    if (!input.trim() || loading) return
 
     console.log('[AIChat] User sent message:', input);
 
@@ -175,23 +153,35 @@ const AIChatAssistant = () => {
 
     try {
       console.log('[AIChat] Calling AI Service...');
-      console.log('[AIChat] User context:', { userId: user?.id, userRole });
-      const response = await askAI(input, { userId: user?.id, userRole })
+      console.log('[AIChat] User context:', { userId: user?.id, userRole, sessionId });
+      const response: any = await askAI(input, { userId: user?.id, userRole, sessionId: sessionId || undefined })
       console.log('[AIChat] AI Response received:', response);
+
+      if (response.sessionId && response.sessionId !== sessionId) {
+        console.log(`[AIChat] Session created/updated: ${response.sessionId}`);
+        setSessionId(response.sessionId);
+        localStorage.setItem('ai_chat_session_id', response.sessionId);
+      }
+
+      console.log('[AIChat] Message render instantly');
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        type: 'ai',
+        text: response.text
+      }]);
 
       setEmotion(response.emotion)
 
       // Map emotion to Luna state
-      const mappedState = emotionToLunaState[response.emotion] || 'idle'
       const mappedReaction = emotionToReaction[response.emotion]
 
-      setLunaState('thinking')
+      setReaction(mappedReaction)
+      
+      // Run TTS asynchronously without awaiting
+      speak(response.text, response.emotion).catch(err => {
+        console.error('[AIChat] Background TTS failure:', err);
+      });
 
-      setTimeout(() => {
-        setReaction(mappedReaction)
-        // Start TTS - the typing effect will start once audio is ready
-        speak(response.text, response.emotion)
-      }, 500)
     } catch (error) {
       console.error('[AIChat] AI Error:', error)
       setEmotion('warning')
@@ -255,14 +245,6 @@ const AIChatAssistant = () => {
               <span className="flex items-center gap-2 justify-center">
                 <Loader2 className="w-4 h-4 animate-spin text-accent" /> กำลังเตรียมเสียง...
               </span>
-            ) : isTyping ? (
-              <span className="text-accent font-medium animate-pulse flex items-center gap-2 justify-center">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-accent"></span>
-                </span>
-                กำลังพูด...
-              </span>
             ) : (
               'พร้อมตอบทุกคำถามเกี่ยวกับโรงเรียน'
             )}
@@ -306,22 +288,7 @@ const AIChatAssistant = () => {
             </div>
           ))}
 
-          {/* Typing Animation Area - Fixed and Synchronized */}
-          {isTyping && typingText && (
-            <div className="flex gap-3 justify-start animate-in fade-in slide-in-from-bottom-2 duration-300">
-              <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-accent" />
-              </div>
-              <div className="max-w-[80%] bg-cream text-navy rounded-2xl rounded-tl-sm p-4 border border-cream-dark shadow-sm ring-1 ring-accent/5">
-                <p className="text-sm leading-relaxed whitespace-pre-line min-h-[1.25rem]">
-                  {typingText}
-                  <span className="inline-block w-2 h-4 bg-accent/60 ml-1 translate-y-0.5 animate-pulse" />
-                </p>
-              </div>
-            </div>
-          )}
-
-          {loading && !isTyping && (
+          {loading && (
             <div className="flex gap-3 justify-start animate-in fade-in duration-300">
               <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
                 <Bot className="w-4 h-4 text-accent" />
@@ -344,13 +311,13 @@ const AIChatAssistant = () => {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={isTyping ? "รอให้ AI พูดจบก่อน..." : "ถามคำถาม..."}
-              disabled={loading || isTyping}
+              placeholder={"ถามคำถาม..."}
+              disabled={loading}
               className="w-full bg-cream/50 border border-cream-dark rounded-full py-3 pl-6 pr-14 text-sm focus:ring-2 focus:ring-accent/50 focus:border-accent transition-all outline-none disabled:opacity-60 disabled:cursor-not-allowed"
             />
             <button
               type="submit"
-              disabled={!input.trim() || loading || isTyping}
+              disabled={!input.trim() || loading}
               className="absolute right-2 p-2 bg-accent hover:bg-accent-hover disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-full shadow-sm transition-all flex items-center justify-center active:scale-95"
             >
               {loading ? (
@@ -367,3 +334,4 @@ const AIChatAssistant = () => {
 }
 
 export default AIChatAssistant
+

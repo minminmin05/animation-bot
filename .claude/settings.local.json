@@ -96,7 +96,9 @@
       "Bash(powershell -c \"Stop-Process -Id 4088 -Force\")",
       "Bash(exit 0)",
       "Bash(dir C:\\\\Users\\\\dgkha\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--lumaid-school-management-app\\\\1be8d089-9141-478e-b969-9e0c4d26cd86\\\\tasks *)",
-      "Bash(pkill -f \"npm run dev\")"
+      "Bash(pkill -f \"npm run dev\")",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(echo \"Timeout or exit code: $?\")"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -48,22 +48,46 @@ export interface AIResponse {
 export interface UserContext {
   userId?: string
   userRole?: 'student' | 'teacher' | 'parent' | 'admin'
+  sessionId?: string
 }
 
 export async function askAI(question: string, userContext?: UserContext): Promise<AIResponse> {
-  const response = await fetch(`${API_BASE}/api/rag/ask`, {
+  const response = await fetch(`${API_BASE}/api/memory/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      question,
+      query: question,
       userId: userContext?.userId,
-      userRole: userContext?.userRole
+      userRole: userContext?.userRole,
+      sessionId: userContext?.sessionId
     })
   })
 
   if (!response.ok) throw new Error('Failed to get AI response')
 
-  return response.json()
+  const data = await response.json()
+  
+  if (!data.success) {
+    throw new Error(data.error || 'Failed to get AI response')
+  }
+
+  return {
+    text: data.response.text,
+    emotion: data.response.emotion,
+    tts: data.response.tts,
+    sources: data.context || [],
+    sessionId: data.sessionId // Expose sessionId back to frontend
+  } as AIResponse & { sessionId?: string }
+}
+
+export async function getChatHistory(sessionId: string, userId?: string) {
+  const url = new URL(`${API_BASE}/api/memory/sessions/${sessionId}`);
+  if (userId) {
+    url.searchParams.append('userId', userId);
+  }
+  const response = await fetch(url.toString());
+  if (!response.ok) throw new Error('Failed to get chat history');
+  return response.json();
 }
 
 // Test intent classification

@@ -7,7 +7,7 @@ import { classifyIntentHybrid, classifyIntent, Intent, requiresDatabaseAccess, g
 // Helper to get the current model name
 const EMBED_MODEL = () => getModelInfo().MODEL_NAME
 import { searchByEmbedding, insertKnowledgeBase } from './rag/services/supabase.service'
-import { generateAnswer, MODEL as LLM_MODEL } from './rag/services/llm.service'
+import { generateAnswer, MODEL as LLM_MODEL, logLLMConfiguration } from './rag/services/llm.service'
 import {
   getSettings,
   updateGeneralSettings,
@@ -30,16 +30,240 @@ import {
   getAccessPoliciesSummary
 } from './api/access-policies.controller.js'
 import {
-  getPersonalData,
-  detectPersonalDataType,
-  extractStudentName,
-  getStudentDataByName
+  getPersonalDataByAction,
+  extractStudentName
 } from './services/grade.service.js'
 import { checkQuerySafety } from './security/queryGuard.js'
+import conversationalMemoryRouter from './api/conversational-memory.controller.js'
+
+// ============================================================
+// STRUCTURED RESPONSE FORMATTER (LLM-LESS)
+// ============================================================
+
+/**
+ * Format structured data into readable Thai text WITHOUT requiring LLM.
+ * This ensures responses work even when LLM providers fail.
+ */
+function formatStructuredResponse(
+  action: string,
+  data: any[],
+  studentName?: string
+): { text: string; emotion: string } {
+  if (!data || data.length === 0) {
+    return {
+      text: studentName
+        ? `ไม่พบข้อมูลของ ${studentName} ในระบบ`
+        : 'ไม่พบข้อมูลของคุณในระบบ',
+      emotion: 'helpful'
+    }
+  }
+
+  let text = ''
+  let emotion = 'helpful'
+
+  switch (action) {
+    case 'GET_STUDENT_PROFILE':
+      const profile = data[0]
+      text = `ข้อมูลนักเรียน\n`
+        + `ชื่อ: ${profile.name || '-'}\n`
+        + `ชั้น: ${profile.class || '-'}\n`
+        + `ระดับชั้น: ${profile.grade_level || '-'}\n`
+        + `วันเกิด: ${profile.date_of_birth || '-'}\n`
+        + `เบอร์โทร: ${profile.phone || '-'}\n`
+        + `ที่อยู่: ${profile.address || '-'}\n`
+        + `ชื่อผู้ปกครอง: ${profile.parent_name || '-'}\n`
+        + `ติดต่อฉุกเฉิน: ${profile.emergency_contact || '-'}`
+      break
+
+    case 'GET_GRADES':
+      if (studentName) {
+        text = `ผลการเรียนของ ${studentName}:\n\n`
+      } else {
+        text = 'ผลการเรียนของคุณ:\n\n'
+      }
+      data.forEach((g: any) => {
+        text += `- ${g.subject}: ${g.score} (${g.grade})\n`
+      })
+      break
+
+    case 'GET_ATTENDANCE':
+      const summary = {
+        present: data.filter((a: any) => a.status === 'present').length,
+        absent: data.filter((a: any) => a.status === 'absent').length,
+        late: data.filter((a: any) => a.status === 'late').length,
+        excused: data.filter((a: any) => a.status === 'excused').length,
+        total: data.length
+      }
+      const attendanceRate = summary.total > 0 ? ((summary.present / summary.total) * 100).toFixed(1) : '0'
+      text = `สถิติการเข้าเรียน:\n`
+        + `- มาเรียน: ${summary.present} วัน (${attendanceRate}%)\n`
+        + `- ขาดเรียน: ${summary.absent} วัน\n`
+        + `- มาสาย: ${summary.late} วัน\n`
+        + `- ลา: ${summary.excused} วัน`
+      break
+
+    case 'GET_SCHEDULE':
+      text = 'ตารางเรียน:\n\n'
+      data.forEach((s: any) => {
+        text += `- ${s.subject} (${s.class_name})`
+        if (s.room_number) text += ` - ห้อง ${s.room_number}`
+        if (s.teacher_name) text += ` - ครู ${s.teacher_name}`
+        if (s.schedule) text += ` [${s.schedule}]`
+        text += '\n'
+      })
+      break
+
+    default:
+      text = JSON.stringify(data, null, 2)
+  }
+
+  return { text, emotion }
+}
 
 const app = express()
 app.use(cors())
 app.use(express.json())
+
+// ============================================================
+// DATABASE QUERY HANDLER
+// ============================================================
+
+/**
+ * Handle database queries (lists, statistics, counts)
+ */
+async function handleDatabaseQuery(res: any, question: string, intentResult?: any) {
+  console.log('[API] Handling database query...')
+
+  try {
+    const { createClient } = await import('@supabase/supabase-js')
+    const supabase = createClient(
+      process.env.SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_KEY!
+    )
+
+    const q = question.toLowerCase()
+    let dbContext = ''
+    let queryExecuted = false
+
+    // Check for count/statistics queries
+    if (/มี(กี่|ทั้งหมด|เท่าไร)|how many|count|จำนวน/.test(q)) {
+      console.log('[API] Statistics/count query detected')
+
+      // Get counts based on what's asked
+      const counts: Record<string, number> = {}
+
+      if (/นักเรียน|student/.test(q)) {
+        const { count } = await supabase.from('students').select('*', { count: 'exact', head: true })
+        counts['นักเรียน'] = count || 0
+      }
+      if (/ครู|teacher/.test(q)) {
+        const { count } = await supabase.from('teachers').select('*', { count: 'exact', head: true })
+        counts['ครู'] = count || 0
+      }
+      if (/ห้อง|class|คลาส/.test(q)) {
+        const { count } = await supabase.from('classes').select('*', { count: 'exact', head: true })
+        counts['ห้องเรียน'] = count || 0
+      }
+
+      // If no specific entity mentioned, get all
+      if (Object.keys(counts).length === 0) {
+        const [studentCount, teacherCount, classCount] = await Promise.all([
+          supabase.from('students').select('*', { count: 'exact', head: true }),
+          supabase.from('teachers').select('*', { count: 'exact', head: true }),
+          supabase.from('classes').select('*', { count: 'exact', head: true })
+        ])
+        counts['นักเรียน'] = studentCount.count || 0
+        counts['ครู'] = teacherCount.count || 0
+        counts['ห้องเรียน'] = classCount.count || 0
+      }
+
+      dbContext = 'สถิติโรงเรียน:\n' + Object.entries(counts)
+        .map(([name, count]) => `- ${name}ทั้งหมด: ${count} ${name === 'นักเรียน' || name === 'ครู' ? 'คน' : 'ห้อง'}`)
+        .join('\n')
+
+      queryExecuted = true
+    }
+
+    // Check for list queries
+    if (!queryExecuted && (/รายชื่อ|list|แสดง|show all/.test(q))) {
+      console.log('[API] List query detected')
+
+      const lists: Record<string, string> = {}
+
+      if (/นักเรียน|student/.test(q)) {
+        const { data } = await supabase.from('students').select('name').limit(50)
+        if (data && data.length > 0) {
+          lists['นักเรียน'] = data.map(s => s.name).join(', ')
+        }
+      }
+      if (/ครู|teacher/.test(q)) {
+        const { data } = await supabase.from('teachers').select('name').limit(50)
+        if (data && data.length > 0) {
+          lists['ครู'] = data.map(t => t.name).join(', ')
+        }
+      }
+
+      // If asking generally, show both
+      if (Object.keys(lists).length === 0) {
+        const [students, teachers] = await Promise.all([
+          supabase.from('students').select('name').limit(20),
+          supabase.from('teachers').select('name').limit(20)
+        ])
+
+        if (students.data && students.data.length > 0) {
+          lists['นักเรียน'] = students.data.map(s => s.name).join(', ')
+        }
+        if (teachers.data && teachers.data.length > 0) {
+          lists['ครู'] = teachers.data.map(t => t.name).join(', ')
+        }
+      }
+
+      dbContext = Object.entries(lists)
+        .map(([name, items]) => `รายชื่อ${name} (${items.split(', ').length} คน):\n${items}`)
+        .join('\n\n')
+
+      queryExecuted = true
+    }
+
+    if (queryExecuted && dbContext) {
+      // Generate answer with database context
+      let answer
+      try {
+        answer = await generateAnswer(question, [], dbContext)
+      } catch (llmError) {
+        // LLM failed - return structured data directly
+        console.warn('[API] LLM failed for DB query, using structured response')
+        answer = {
+          text: dbContext,
+          emotion: 'helpful'
+        }
+      }
+
+      return res.json({
+        ...answer,
+        intent: Intent.DATABASE_QUERY,
+        type: 'database_query',
+        routing: 'DB_QUERY',
+        matchedKeywords: intentResult?.matchedKeywords
+      })
+    }
+
+    // No specific DB query pattern matched, fallback to general
+    console.log('[API] No specific DB pattern matched, falling back to general response')
+    return res.json({
+      intent: Intent.DATABASE_QUERY,
+      text: 'ขอโทษครับ ระบบไม่สามารถดึงข้อมูลรายการนั้นได้ กรุณาลองระบุคำถามให้ชัดเจนกว่านี้',
+      emotion: 'helpful'
+    })
+  } catch (error) {
+    console.error('[API] Database query error:', error)
+    return res.status(500).json({
+      text: 'ขออภัย ระบบไม่สามารถดึงข้อมูลได้ในขณะนี้',
+      emotion: 'concerned',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    })
+  }
+}
 
 // POST /api/rag/query - retrieval only
 app.post('/api/rag/query', async (req, res) => {
@@ -144,100 +368,149 @@ app.post('/api/rag/ask', async (req, res) => {
         })
       }
 
-      // Detect what type of personal data is being requested
-      const dataType = detectPersonalDataType(question)
-
-      // Check if asking about a specific student by name
-      const studentName = extractStudentName(question)
+      // Extract person name from intent service's detected entities
+      const personNameEntity = intentResult.detectedEntities?.find(e => e.type === 'person_name')
+      const studentName = personNameEntity?.value || null
 
       console.log('[API] PERSONAL_DATA request:', {
         userId,
         userRole,
-        dataType,
         studentName,
-        action: studentName ? `GET_${dataType.toUpperCase()}_FOR_STUDENT` : `GET_${dataType.toUpperCase()}`
+        allEntities: intentResult.detectedEntities
       })
 
       try {
-        let personalData: any
-        let targetStudentName: string | undefined
+        // Use the new action-based API
+        const result = await getPersonalDataByAction(
+          question,
+          studentName,
+          userId,
+          userRole || 'student'
+        )
 
-        if (studentName && userRole === 'admin') {
-          // Admin querying data for a specific student by name
-          console.log('[API] Admin querying data for student:', studentName)
-          const result = await getStudentDataByName(studentName, dataType, userId, userRole || 'admin')
+        console.log('[API] Action result:', {
+          action: result.action,
+          actionDescription: result.actionDescription,
+          hasData: result.data ? result.data.length > 0 : false
+        })
 
-          if (!result) {
-            return res.json({
-              intent: intentResult.intent,
-              type: 'personal_data',
-              text: `ไม่พบนักเรียนชื่อ "${studentName}" ในระบบ (Student "${studentName}" not found)`,
-              emotion: 'concerned'
-            })
-          }
-
-          personalData = result.data
-          targetStudentName = result.student.name
-        } else {
-          // Regular user querying their own data
-          personalData = await getPersonalData(userId, userRole || 'student', dataType)
-        }
-
-        // Check if data exists
-        if (!personalData || (Array.isArray(personalData) && personalData.length === 0)) {
+        // Check for errors
+        if (result.error) {
           return res.json({
             intent: intentResult.intent,
             type: 'personal_data',
-            text: targetStudentName
-              ? `ไม่พบข้อมูล${dataType === 'grades' ? 'เกรด' : dataType === 'attendance' ? 'การมาเรียน' : 'ตารางเรียน'}ของ ${targetStudentName} (No ${dataType} found for ${targetStudentName})`
-              : 'ไม่พบข้อมูลของคุณในระบบ (No data found for you in the system)',
+            action: result.action,
+            text: result.error,
+            emotion: 'concerned'
+          })
+        }
+
+        // Check if data exists
+        if (!result.data || (Array.isArray(result.data) && result.data.length === 0)) {
+          return res.json({
+            intent: intentResult.intent,
+            type: 'personal_data',
+            action: result.action,
+            text: studentName
+              ? `ไม่พบ${result.actionDescription}ของ ${studentName} (No ${result.actionDescription} found for ${studentName})`
+              : `ไม่พบ${result.actionDescription}ของคุณในระบบ (No ${result.actionDescription} found for you)`,
             emotion: 'helpful'
           })
         }
 
-        // Format data for AI response
+        // Format data for AI response based on action type
         let context = ''
-        if (dataType === 'grades') {
-          const grades = personalData as any[]
-          context = grades.map(g =>
-            g.student_name
-              ? `นักเรียน: ${g.student_name}, วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
-              : `วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
-          ).join('\n')
-        } else if (dataType === 'attendance') {
-          const attendance = personalData as any[]
-          const summary = {
-            present: attendance.filter(a => a.status === 'present').length,
-            absent: attendance.filter(a => a.status === 'absent').length,
-            late: attendance.filter(a => a.status === 'late').length,
-            total: attendance.length
-          }
-          context = `การมาเรียน: มา ${summary.present} วัน, ขาด ${summary.absent} วัน, สาย ${summary.late} วัน (ทั้งหมด ${summary.total} วัน)`
-        } else if (dataType === 'schedule') {
-          const schedule = personalData as any[]
-          context = schedule.map(s =>
-            `${s.subject} (${s.class_name})${s.room_number ? ` - ห้อง ${s.room_number}` : ''}`
-          ).join('\n')
+        switch (result.action) {
+          case 'GET_STUDENT_PROFILE':
+            // Format student profile
+            const profile = result.data[0]
+            context = Object.entries(profile)
+              .filter(([_, v]) => v !== null && v !== undefined && v !== '')
+              .map(([key, value]) => {
+                const thaiKey: Record<string, string> = {
+                  name: 'ชื่อ',
+                  class: 'ชั้นเรียน',
+                  grade_level: 'ระดับชั้น',
+                  date_of_birth: 'วันเกิด',
+                  address: 'ที่อยู่',
+                  phone: 'เบอร์โทร',
+                  enrollment_date: 'วันที่ลงทะเบียน',
+                  parent_name: 'ชื่อผู้ปกครอง',
+                  emergency_contact: 'ติดต่อฉุยเหตุ',
+                  blood_type: 'กรุ๊ปเลือด',
+                  medical_conditions: 'โรคประจำตัว'
+                }
+                return `${thaiKey[key] || key}: ${value}`
+              }).join('\n')
+            break
+
+          case 'GET_GRADES':
+            context = result.data.map((g: any) =>
+              g.student_name
+                ? `นักเรียน: ${g.student_name}, วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
+                : `วิชา: ${g.subject}, คะแนน: ${g.score}, เกรด: ${g.grade}`
+            ).join('\n')
+            break
+
+          case 'GET_ATTENDANCE':
+            const attendance = result.data as any[]
+            const summary = {
+              present: attendance.filter(a => a.status === 'present').length,
+              absent: attendance.filter(a => a.status === 'absent').length,
+              late: attendance.filter(a => a.status === 'late').length,
+              total: attendance.length
+            }
+            context = `การมาเรียน: มา ${summary.present} วัน, ขาด ${summary.absent} วัน, สาย ${summary.late} วัน (ทั้งหมด ${summary.total} วัน)`
+            break
+
+          case 'GET_SCHEDULE':
+            context = result.data.map((s: any) =>
+              `${s.subject} (${s.class_name})${s.room_number ? ` - ห้อง ${s.room_number}` : ''}${s.schedule ? ` [${s.schedule}]` : ''}`
+            ).join('\n')
+            break
+
+          default:
+            context = JSON.stringify(result.data, null, 2)
         }
 
         // Generate AI response with personal data context
-        const answer = await generateAnswer(question, [], context)
+        // If LLM fails, we have a structured fallback
+        let answer
+        let usedStructuredFallback = false
 
-        console.log('[API] PERSONAL_DATA response sent')
+        try {
+          answer = await generateAnswer(question, [], context)
+        } catch (llmError) {
+          console.warn('[API] LLM generation failed, using structured fallback:', llmError)
+          // LLM failed - use structured formatter instead
+          const formatted = formatStructuredResponse(result.action, result.data, studentName)
+          answer = {
+            text: formatted.text,
+            emotion: formatted.emotion
+          }
+          usedStructuredFallback = true
+        }
+
+        console.log('[API] PERSONAL_DATA response sent', usedStructuredFallback ? '(structured fallback)' : '(LLM)')
 
         return res.json({
           ...answer,
           intent: intentResult.intent,
           type: 'personal_data',
-          dataType,
-          studentName: targetStudentName,
-          emotion: 'happy' // Positive emotion for successful data retrieval
+          action: result.action,
+          actionDescription: result.actionDescription,
+          studentName: studentName,
+          emotion: 'happy', // Positive emotion for successful data retrieval
+          matchedKeywords: intentResult.matchedKeywords,
+          detectedEntities: intentResult.detectedEntities,
+          routingReason: intentResult.routingReason,
+          fallbackUsed: usedStructuredFallback
         })
       } catch (error: any) {
-        console.error('[API] PERSONAL_DATA error:', error.message)
+        console.error('[API] PERSONAL_DATA error:', error)
 
         // Handle security violations
-        if (error.message.includes('UNAUTHORIZED') || error.message.includes('AUTH_REQUIRED')) {
+        if (error.message.includes('UNAUTHORIZED') || error.message.includes('AUTH_REQUIRED') || error.message.includes('ACCESS_DENIED')) {
           return res.json({
             intent: intentResult.intent,
             error: 'UNAUTHORIZED',
@@ -255,16 +528,28 @@ app.post('/api/rag/ask', async (req, res) => {
       }
     }
 
-    // Handle UNKNOWN intent
-    if (intentResult.intent === Intent.UNKNOWN) {
+    // Handle DATABASE_QUERY intent - lists, statistics, counts
+    if (intentResult.intent === Intent.DATABASE_QUERY) {
+      console.log('[API] DATABASE_QUERY intent detected')
+      return await handleDatabaseQuery(res, question, intentResult)
+    }
+
+    // Handle UNKNOWN intent with RAG fallback (not immediate clarification)
+    if (intentResult.intent === Intent.UNKNOWN && routingAction === 'RAG_SEARCH_FALLBACK') {
+      console.log('[API] UNKNOWN intent with school keywords - trying RAG search fallback')
+      // Continue to RAG search below
+    } else if (intentResult.intent === Intent.UNKNOWN) {
       return res.json({
         intent: intentResult.intent,
         text: 'ฉันไม่แน่ใจว่าคุณถามเกี่ยวกับอะไร (I\'m not sure what you\'re asking about)',
         suggestion: 'คุณสามารถถามเกี่ยวกับ: กฎของโรงเรียน, วันหยุด, หรือข้อมูลการลงทะเบียน',
         examples: [
           'กฎเครื่องแบบคืออะไร? (What is the dress code policy?)',
-          'เกรดของฉันเป็นอย่างไร? (How are my grades?)'
-        ]
+          'เกรดของฉันเป็นอย่างไร? (How are my grades?)',
+          'มีนักเรียนกี่คน? (How many students are there?)'
+        ],
+        matchedKeywords: intentResult.matchedKeywords,
+        detectedEntities: intentResult.detectedEntities
       })
     }
 
@@ -402,8 +687,38 @@ app.post('/api/rag/ask', async (req, res) => {
     }
 
     console.log(`[API] Generating answer with LLM...`)
-    const answer = await generateAnswer(question, sources, statisticsContext || undefined)
-    console.log(`[API] Answer generated successfully`)
+    let answer
+    let llmFailed = false
+
+    try {
+      answer = await generateAnswer(question, sources, statisticsContext || undefined)
+    } catch (llmError) {
+      console.warn('[API] LLM generation failed, using fallback:', llmError)
+      llmFailed = true
+
+      // If we have statistics context, return it directly
+      if (statisticsContext) {
+        answer = {
+          text: statisticsContext,
+          emotion: 'helpful'
+        }
+      } else if (sources.length > 0) {
+        // Return raw RAG sources if LLM fails
+        answer = {
+          text: 'พบข้อมูลที่เกี่ยวข้อง:\n\n' +
+                sources.map((s, i) => `${i + 1}. ${s.content}`).join('\n\n'),
+          emotion: 'helpful'
+        }
+      } else {
+        // No data available
+        answer = {
+          text: 'ขออภัย ไม่พบข้อมูลที่เกี่ยวข้อง กรุณาลองถามคำถามอื่น\n\n(Sorry, no relevant information found. Please try another question.)',
+          emotion: 'neutral'
+        }
+      }
+    }
+
+    console.log(`[API] Answer generated${llmFailed ? ' (LLM failed, used fallback)' : ' successfully'}`)
 
     console.log(`[API] Returning answer\n`)
 
@@ -411,19 +726,39 @@ app.post('/api/rag/ask', async (req, res) => {
       ...answer,
       intent: intentResult.intent,
       routing: routingAction,
-      confidence: intentResult.confidence
+      confidence: intentResult.confidence,
+      // Enhanced debugging info
+      matchedKeywords: intentResult.matchedKeywords,
+      detectedEntities: intentResult.detectedEntities,
+      routingReason: intentResult.routingReason
     })
   } catch (error) {
     console.error('[API] Error details:')
     console.error('  Error type:', error instanceof Error ? error.constructor.name : typeof error)
     console.error('  Error message:', error instanceof Error ? error.message : String(error))
-    console.error('  Error stack:', error instanceof Error ? error.stack : 'No stack trace')
-    
+
+    // Check if this is an LLM failure - provide helpful message instead of hard error
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const isLLMError = errorMessage.includes('API') ||
+                       errorMessage.includes('quota') ||
+                       errorMessage.includes('key') ||
+                       errorMessage.includes('LLM')
+
+    if (isLLMError) {
+      console.log('[API] LLM error detected, returning graceful fallback')
+      return res.json({
+        text: 'ขออภัย ระบบปัญญาประดิษฐ์ไม่ว่าง แต่ระบบยังสามารถตอบคำถามเกี่ยวกับข้อมูลนักเรียน เกรด และการเข้าเรียนได้\n\n(Sorry, the AI system is unavailable, but you can still ask about student grades, attendance, and schedules.)',
+        emotion: 'helpful',
+        error: errorMessage,
+        type: 'llm_unavailable'
+      })
+    }
+
     // Return error in format that frontend expects
     res.status(500).json({
-      text: 'ขออภัย ระบบไม่สามารถตอบได้ในขณะนี้ กรุณาลองใหม่ภายหลัง',
+      text: 'ขออภัย ระบบไม่สามารถดำเนินการได้ในขณะนี้ กรุณาลองใหม่ภายหลัง',
       emotion: 'warning',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
       type: 'error'
     })
   }
@@ -512,6 +847,9 @@ app.post('/api/tts/generate', generateSpeech)
 app.get('/api/tts/health', getTTSHealth)
 app.post('/api/tts/health/reset', resetTTSHealth)
 
+// Conversational Memory API
+app.use('/api/memory', conversationalMemoryRouter)
+
 // Health check
 app.get('/api/rag/health', (req, res) => {
   const embedConfig = getEmbeddingConfig()
@@ -535,6 +873,9 @@ app.listen(PORT, () => {
   console.log(`RAG API server running on port ${PORT}`)
   console.log(`========================================`)
   console.log(`Embedding: ${EMBED_MODEL()} (${embedConfig.provider}, ${embedConfig.dimensions}d)`)
-  console.log(`LLM: ${LLM_MODEL}`)
+
+  // Log detailed LLM configuration
+  logLLMConfiguration()
+
   console.log(`========================================\n`)
 })

@@ -111,9 +111,15 @@ export async function generateSpeechWithFallback(
   // Determine which provider to use
   const providerType = preferredProvider || await getCurrentProvider();
 
-  // Check if TTS is disabled (empty provider)
+  // Check if TTS is disabled (empty provider) - return empty result instead of throwing
   if (providerType === 'empty') {
-    throw new Error('TTS is disabled. Please select a voice model in settings.');
+    console.log('[TTS Service] No TTS provider configured, skipping audio generation');
+    // Return a marker that indicates TTS was skipped
+    return {
+      filePath: '',
+      contentType: '',
+      providerUsed: 'none'
+    };
   }
 
   const primaryProvider = getProvider(providerType);

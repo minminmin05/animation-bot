@@ -9,6 +9,7 @@ interface ProviderConfig {
   apiKey: string
   model: string
   apiUrl?: string
+  isNewFormatKey?: boolean
 }
 
 // Get provider config from environment
@@ -25,7 +26,8 @@ function getProviderConfig(provider: LLMProvider): ProviderConfig {
         name: 'MiniMax',
         apiKey: process.env.MINIMAX_API_KEY || '',
         model: process.env.MINIMAX_MODEL || 'abab6.5s-chat',
-        apiUrl: process.env.MINIMAX_API_URL || 'https://api.minimax.chat/v1/text/chatcompletion_pro'
+        apiUrl: process.env.MINIMAX_API_URL || 'https://api.minimax.chat/v1/text/chatcompletion_pro',
+        isNewFormatKey: (process.env.MINIMAX_API_KEY || '').startsWith('sk-')
       }
     default:
       throw new Error(`Unknown LLM provider: ${provider}`)
@@ -59,6 +61,99 @@ function parseMiniMaxKey(apiKey: string): { groupId: string; apiKey: string } | 
 // Get current provider from settings or default to MiniMax
 function getCurrentProvider(): LLMProvider {
   return (process.env.LLM_PROVIDER as LLMProvider) || 'minimax'
+}
+
+// ============================================================
+// MINIMAX ERROR TYPES
+// ============================================================
+
+interface MiniMaxBaseResp {
+  status_code: number
+  status_msg: string
+}
+
+interface MiniMaxErrorResponse {
+  base_resp: MiniMaxBaseResp
+}
+
+interface MiniMaxApiError extends Error {
+  statusCode?: number
+  statusMsg?: string
+  isAuthError?: boolean
+  isRateLimit?: boolean
+  isQuotaExceeded?: boolean
+}
+
+// Common MiniMax error codes
+const MINIMAX_ERROR_CODES = {
+  INVALID_API_KEY: 2049,
+  RATE_LIMIT: 1002,
+  QUOTA_EXCEEDED: 1003,
+  INVALID_MODEL: 1004,
+  TIMEOUT: 1005,
+  INTERNAL_ERROR: 1006,
+  INVALID_REQUEST: 1007
+} as const
+
+/**
+ * Create a typed MiniMax API error
+ */
+function createMiniMaxError(
+  statusCode: number,
+  statusMsg: string
+): MiniMaxApiError {
+  const error = new Error(`MiniMax API Error (${statusCode}): ${statusMsg}`) as MiniMaxApiError
+  error.statusCode = statusCode
+  error.statusMsg = statusMsg
+
+  // Categorize error for better handling
+  if (statusCode === MINIMAX_ERROR_CODES.INVALID_API_KEY) {
+    error.isAuthError = true
+  } else if (statusCode === MINIMAX_ERROR_CODES.RATE_LIMIT) {
+    error.isRateLimit = true
+  } else if (statusCode === MINIMAX_ERROR_CODES.QUOTA_EXCEEDED) {
+    error.isQuotaExceeded = true
+  }
+
+  return error
+}
+
+/**
+ * Validate API key configuration at startup
+ */
+export function validateMiniMaxConfig(): {
+  isValid: boolean
+  error?: string
+  keyLength?: number
+  isNewFormat?: boolean
+} {
+  const apiKey = process.env.MINIMAX_API_KEY
+
+  if (!apiKey) {
+    return { isValid: false, error: 'MINIMAX_API_KEY not set' }
+  }
+
+  const trimmed = apiKey.trim()
+  if (!trimmed) {
+    return { isValid: false, error: 'MINIMAX_API_KEY is empty' }
+  }
+
+  // Check format
+  const isNewFormat = trimmed.startsWith('sk-')
+  const parts = trimmed.split(';')
+
+  if (!isNewFormat && parts.length !== 2) {
+    return {
+      isValid: false,
+      error: 'Invalid key format. Use: groupId;apiKey or sk- format'
+    }
+  }
+
+  return {
+    isValid: true,
+    keyLength: trimmed.length,
+    isNewFormat
+  }
 }
 
 export interface LLMSources {
@@ -108,16 +203,17 @@ async function generateWithMiniMax(
   const keyInfo = parseMiniMaxKey(config.apiKey)
 
   if (!keyInfo) {
-    throw new Error('MiniMax API key format invalid. Use: groupId;apiKey or sk- format')
+    const error = new Error('MiniMax API key format invalid. Use: groupId;apiKey or sk- format') as MiniMaxApiError
+    error.isAuthError = true
+    throw error
   }
 
   console.log('[LLM] MiniMax request with API:', keyInfo.apiKey.substring(0, 10) + '...')
 
   // New MiniMax API format (for sk- keys)
   const isNewFormat = keyInfo.apiKey.startsWith('sk-')
-  const apiUrl = isNewFormat
-    ? 'https://api.minimax.chat/v1/text/chatcompletion_pro'
-    : config.apiUrl!
+  // Use MINIMAX_API_URL from .env, not hardcoded URL
+  const apiUrl = config.apiUrl || 'https://api.minimax.chat/v1/text/chatcompletion_pro'
 
   const requestBody = isNewFormat
     ? {
@@ -149,40 +245,105 @@ async function generateWithMiniMax(
 
   console.log('[LLM] MiniMax API URL:', apiUrl)
 
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${keyInfo.apiKey}`
-    },
-    body: JSON.stringify(requestBody)
-  })
+  let response: Response
+  try {
+    response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${keyInfo.apiKey}`
+      },
+      body: JSON.stringify(requestBody)
+    })
+  } catch (networkError) {
+    console.error('[LLM] MiniMax network error:', networkError)
+    throw new Error(`MiniMax API network error: ${networkError instanceof Error ? networkError.message : 'Unknown network error'}`)
+  }
 
+  // Handle HTTP-level errors
   if (!response.ok) {
-    const errorText = await response.text()
-    console.error('[LLM] MiniMax API error:', response.status, errorText)
-    throw new Error(`MiniMax API error: ${response.status} - ${errorText}`)
+    let errorText = ''
+    try {
+      errorText = await response.text()
+    } catch {
+      errorText = 'Unable to read error response'
+    }
+    console.error('[LLM] MiniMax HTTP error:', response.status, errorText)
+
+    // Try to parse MiniMax error from response body
+    try {
+      const errorData = JSON.parse(errorText) as MiniMaxErrorResponse
+      if (errorData.base_resp) {
+        throw createMiniMaxError(errorData.base_resp.status_code, errorData.base_resp.status_msg)
+      }
+    } catch {
+      // Not JSON or no base_resp, use HTTP status
+    }
+
+    throw new Error(`MiniMax API HTTP error: ${response.status} - ${errorText}`)
   }
 
-  const data = await response.json()
-  console.log('[LLM] MiniMax response:', JSON.stringify(data).substring(0, 200))
+  // Parse response JSON
+  let data: any
+  try {
+    data = await response.json()
+  } catch (parseError) {
+    console.error('[LLM] MiniMax response parse error:', parseError)
+    throw new Error('MiniMax API response is not valid JSON')
+  }
 
-  // Handle different response formats
+  console.log('[LLM] MiniMax response keys:', Object.keys(data).join(', '))
+
+  // ============================================================
+  // FIRST: Check MiniMax's base_resp for API-level errors
+  // ============================================================
+  if (data.base_resp && typeof data.base_resp === 'object') {
+    const { status_code, status_msg } = data.base_resp
+
+    // status_code === 0 means success in MiniMax API
+    if (status_code !== 0) {
+      console.error('[LLM] MiniMax API error from base_resp:', status_code, status_msg)
+      throw createMiniMaxError(status_code, status_msg)
+    }
+
+    console.log('[LLM] MiniMax base_resp OK:', status_code, status_msg)
+  }
+
+  // ============================================================
+  // THEN: Parse the actual response content
+  // ============================================================
+
+  // OpenAI-compatible format (new sk- keys)
   if (data.choices && data.choices[0] && data.choices[0].message) {
-    return data.choices[0].message.content || ''
+    const content = data.choices[0].message.content || ''
+    if (content) {
+      console.log('[LLM] MiniMax response: OpenAI format, length:', content.length)
+      return content
+    }
   }
+
+  // Old MiniMax format: reply field
   if (data.reply) {
+    console.log('[LLM] MiniMax response: reply format, length:', data.reply.length)
     return data.reply
   }
+
+  // Alternative format with messages in choices
   if (data.choices && data.choices[0] && data.choices[0].messages) {
-    return data.choices[0].messages[0]?.text || ''
+    const text = data.choices[0].messages[0]?.text || ''
+    if (text) {
+      console.log('[LLM] MiniMax response: choices.messages format, length:', text.length)
+      return text
+    }
   }
 
-  throw new Error('Unexpected MiniMax API response format')
+  // If we get here, we couldn't parse the response
+  console.error('[LLM] MiniMax unhandled response format:', JSON.stringify(data).substring(0, 500))
+  throw new Error('Unexpected MiniMax API response format - could not extract content')
 }
 
 // Main generate function with provider selection
-async function generateWithProvider(
+export async function generateWithProvider(
   provider: LLMProvider,
   prompt: string
 ): Promise<string> {
@@ -194,13 +355,50 @@ async function generateWithProvider(
 
   console.log(`[LLM] Using provider: ${provider} (${config.name})`)
 
-  switch (provider) {
-    case 'gemini':
-      return await generateWithGemini(prompt, config)
-    case 'minimax':
-      return await generateWithMiniMax(prompt, config)
-    default:
-      throw new Error(`Unknown provider: ${provider}`)
+  try {
+    switch (provider) {
+      case 'gemini':
+        return await generateWithGemini(prompt, config)
+      case 'minimax':
+        return await generateWithMiniMax(prompt, config)
+      default:
+        throw new Error(`Unknown provider: ${provider}`)
+    }
+  } catch (error) {
+    // Check if error is from MiniMax and we should fallback
+    if (provider === 'minimax') {
+      const miniMaxError = error as MiniMaxApiError
+
+      // Log detailed error info
+      if (miniMaxError.isAuthError) {
+        console.error('[LLM] MiniMax auth error - invalid or expired API key')
+      } else if (miniMaxError.isRateLimit) {
+        console.error('[LLM] MiniMax rate limit exceeded')
+      } else if (miniMaxError.isQuotaExceeded) {
+        console.error('[LLM] MiniMax quota exceeded')
+      } else {
+        console.error('[LLM] MiniMax error:', miniMaxError.message)
+      }
+
+      // Try fallback to Gemini if available
+      const geminiKey = process.env.GEMINI_API_KEY
+      if (geminiKey) {
+        console.log('[LLM] Falling back to Gemini due to MiniMax error')
+        try {
+          const geminiConfig: ProviderConfig = {
+            name: 'Google Gemini (fallback)',
+            apiKey: geminiKey,
+            model: process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+          }
+          return await generateWithGemini(prompt, geminiConfig)
+        } catch (fallbackError) {
+          console.error('[LLM] Fallback to Gemini also failed:', fallbackError)
+          throw miniMaxError // Re-throw original error
+        }
+      }
+    }
+
+    throw error
   }
 }
 
@@ -321,3 +519,60 @@ export function getModelInfo(): { provider: LLMProvider; name: string; model: st
 
 // Legacy export for compatibility
 export const MODEL = process.env.MINIMAX_MODEL || process.env.GEMINI_MODEL || 'abab6.5s-chat'
+
+// ============================================================
+// STARTUP VALIDATION & DIAGNOSTICS
+// ============================================================
+
+/**
+ * Log LLM configuration status at startup
+ */
+export function logLLMConfiguration(): void {
+  console.log('\n[LLM] ==================== LLM Configuration ====================')
+
+  const provider = getCurrentProvider()
+  console.log(`[LLM] Active provider: ${provider}`)
+
+  switch (provider) {
+    case 'minimax': {
+      const validation = validateMiniMaxConfig()
+      console.log('[LLM] MiniMax enabled: true')
+
+      if (validation.isValid) {
+        console.log('[LLM] MiniMax API key loaded: yes')
+        console.log(`[LLM] MiniMax API key length: ${validation.keyLength}`)
+        console.log(`[LLM] MiniMax API key format: ${validation.isNewFormat ? 'sk- (new)' : 'groupId;apiKey (old)'}`)
+        console.log(`[LLM] MiniMax Model: ${process.env.MINIMAX_MODEL || 'abab6.5s-chat'}`)
+        console.log(`[LLM] MiniMax API URL: ${process.env.MINIMAX_API_URL || 'https://api.minimax.chat/v1/text/chatcompletion_pro'}`)
+
+        // Check Gemini for fallback
+        const geminiKey = process.env.GEMINI_API_KEY
+        console.log(`[LLM] Fallback to Gemini: ${geminiKey ? 'yes' : 'no'}`)
+      } else {
+        console.error(`[LLM] ⚠ Configuration issue: ${validation.error}`)
+        console.error('[LLM] MiniMax API calls will fail!')
+      }
+      break
+    }
+
+    case 'gemini': {
+      const geminiKey = process.env.GEMINI_API_KEY
+      console.log('[LLM] Gemini enabled: true')
+      console.log(`[LLM] Gemini API key loaded: ${geminiKey ? 'yes' : 'no'}`)
+      console.log(`[LLM] Gemini API key length: ${geminiKey?.length || 0}`)
+      console.log(`[LLM] Gemini Model: ${process.env.GEMINI_MODEL || 'gemini-2.5-flash'}`)
+
+      // MiniMax disabled info
+      const miniMaxKey = process.env.MINIMAX_API_KEY
+      console.log(`[LLM] MiniMax enabled: ${miniMaxKey ? 'true (not used)' : 'false'}`)
+      break
+    }
+  }
+
+  console.log('[LLM] ===========================================================\n')
+}
+
+// Auto-log on module load (in development)
+if (process.env.NODE_ENV !== 'production') {
+  logLLMConfiguration()
+}

@@ -1,26 +1,48 @@
+/**
+ * Enhanced Intent Classification Service
+ * Features:
+ * - Keyword-based fast routing (deterministic)
+ * - Entity detection (names, student IDs, etc.)
+ * - Confidence recovery logic
+ * - Detailed logging for debugging
+ * - Support for Thai and English
+ */
+
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '')
 const MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash-exp'
 
-// Intent categories for query routing
+// ============================================================
+// INTENT ENUMS
+// ============================================================
+
 export enum Intent {
   KNOWLEDGE = 'knowledge',         // Policies, rules, general info → use RAG
   PERSONAL_DATA = 'personal_data', // Grades, attendance, personal info → use secure DB query
+  DATABASE_QUERY = 'database_query', // List queries, statistics → use DB
   AMBIGUOUS = 'ambiguous',         // Could be either → ask clarification
   UNKNOWN = 'unknown'              // Not school-related or unclear
 }
+
+// ============================================================
+// TYPES
+// ============================================================
 
 export interface IntentClassification {
   intent: Intent
   confidence: number
   reasoning: string
   suggestedAction: string
-  needsLLMFallback?: boolean // Flag indicating if LLM should be used
-  clarificationQuestion?: string // Question to ask user for AMBIGUOUS intents
+  needsLLMFallback?: boolean
+  clarificationQuestion?: string
+  // New fields for improved debugging
+  matchedKeywords?: string[]
+  detectedEntities?: Entity[]
+  confidenceAdjustment?: number
+  routingReason?: string
 }
 
-// User context for intent classification
 export interface UserContext {
   userId?: string
   role?: 'student' | 'teacher' | 'parent' | 'admin'
@@ -28,158 +50,688 @@ export interface UserContext {
   teacherId?: string
 }
 
-// Intent classification patterns (English + Thai)
-const INTENT_PATTERNS = {
-  // KNOWLEDGE: policies, rules, general info
-  [Intent.KNOWLEDGE]: [
-    // English patterns - Strong indicators
-    /policy|policies|rule|rules|regulation|guideline/i,
-    /what('s| is| are).*policy/i,
-    /dress code|uniform|khrue\b|ครอบบ|เครื่องแบบ/i,
-    /grading (scale|system|policy|calculation)|calculate.*grade|gpa.*calculat/i,
-    /contact|office|phone number|email/i,
-    /faq|help|guide|tutorial/i,
-    /calendar|holiday|break|semester|academic year/i,
-    /how (do|to|can|does|is).*(apply|register|enroll|work|calculate)/i,
-    /where (is|are|to).*(located|find|go)/i,
-    /who (is|to contact)/i,
-    /when (is|are|do).*(start|end|begin|due)/i,
-    // Thai patterns - Strong indicators
-    /กฎ|กติกา|ระเบียบ|ประกาศ|นโยบาย/,
-    /คือ(อะไร|อย่างไร)(?!.*ของฉัน)/,
-    /ทำ(อย่างไร|ไง|ไม)/,
-    /ติดต่อ|สำนักงาน/,
-    /วัน(หยุด|ปิดเทอม|เปิดเทอม)/,
-    /ภาคเรียน|ไตรา|งาน/,
-    /วิธี(ลงทะเบียน|เรียน|ทำ)/,
-    /เกรดเฉลี่ย|คำนวณ.*เกรด|gpa.*/i,
-    /วิชา(อะไร|ไหน)/,
-    /มีสิทธิ์|สิทธิ์|แก้ตัว|กี่ครั้ง|ได้กี่/,
-    // Questions about counts/statistics - must match "มี" ... "กี่" ... noun
-    /มี.*กี่.*(นักเรียน|ครู|คน|ห้อง|คลาส|อาคาร)/,
-    /มี(นักเรียน|ครู|คน).*กี่/,
-    /นักเรียน.*กี่คน/,
-    /ครู.*กี่คน/,
-    /จำนวน(นักเรียน|ครู|คน|ห้อง|คลาส)/,
-    /โรงเรียน.*มี(กี่|อะไร|อย่างไร)/,
-    /ทั้งหมด.*กี่/,
-    // General questions about school
-    /สถานที่|ห้อง|อาคาร|โรงเรียน/,
-    // Database list queries - asking for lists/names from database
-    /มี.*นักเรียน.*ชื่ออะไร/,
-    /รายชื่อ(นักเรียน|ครู|คน)/,
-    /นักเรียน.*ทั้งหมด|ครู.*ทั้งหมด/,
-    /แสดง.*รายชื่อ/,
-    /ชื่อ.*(นักเรียน|ครู|คน).*บ้าง/,
-    /โรงเรียน.*มี(ใคร|อะไร).*บ้าง/,
-    /ดู.*รายชื่อ/,
-    /list.*all.*students|show.*all.*students/i,
-    /who.*are.*the.*students/i,
-    /what.*students.*(do|are|have)/i
-  ],
-
-  // PERSONAL_DATA: grades, attendance, personal info
-  [Intent.PERSONAL_DATA]: [
-    // English patterns - Must include personal pronouns
-    /\bmy\s+(grades?|scores?|gpa|academic|performance|results?|marks?)\b/i,
-    /\bmy\s+(attendance|absences|present|record)\b/i,
-    /\bmy\s+(classes?|schedule|timetable|subjects?|courses?)\b/i,
-    /\bhow\s+(am\s+I|did\s+i)\s+(doing|performing|score)/i,
-    /\bshow\s+(me\s+)?my\b/i,
-    /\bcheck\s+my\b/i,
-    /\bi\s+(need|want|have)\s+to\s+(know|see)\s+my\b/i,
-    /\bdid\s+i\s+(pass|fail|miss)/i,
-    /\bwhat\s+are\s+my\b/i,
-    /\bhow\s+many\s+(credits?|units?|days|times).*\bi\b/i,
-    /\bi\s+(have|missed|failed)/i,
-    // Thai patterns - Must include personal pronouns
-    /เกรดของฉัน|คะแนนของฉัน|ผลการเรียนของฉัน/,
-    /ฉัน\s+สอบ|ผลสอบ\s+ของฉัน/,
-    /การมาเรียนของฉัน|งานมาเรียน.*ของฉัน/,
-    /ตารางเรียนของฉัน|ตาราง.*ของฉัน/,
-    /คลาสของฉัน|วิชา.*ของฉัน/,
-    /ฉัน\s+ขาด\s*(เรียน|ไป)\s*กี่/,
-    /ฉัน\s+ลา\s*กี่.*วน|มาสาย.*ฉัน/,
-    /ฉัน\s+ได้.*คะแนน|คะแนน.*ฉัน.*ได้/,
-    /เกรด.*ฉัน|ผล.*ฉัน/,
-    /กี่.*วัน.*ฉัน.*/,
-    // Thai admin patterns - requesting data for a specific person by name
-    /ขอ(ข้อมูล|เกรด|คะแนน|ผลสอบ).*ของ\s+[a-z฀-๿]+/i,
-    /เกรดของ\s+[a-z฀-๿]+/,
-    /คะแนนของ\s+[a-z฀-๿]+/,
-    /ข้อมูลของ\s+[a-z฀-๿]+/,
-    // English admin patterns
-    /(grade|score|attendance).*\s+for\s+[a-z]+/i,
-    /show\s+[a-z]+['']?s?\s+(grade|score|attendance)/i,
-    /[a-z]+['']?s?\s+(grades?|scores?|attendance)/i
-  ]
+export interface Entity {
+  type: 'person_name' | 'student_id' | 'teacher_id' | 'room_number' | 'subject' | 'class_name' | 'grade_level'
+  value: string
+  confidence: number
 }
 
-// Negative patterns (phrases that should NOT match an intent)
-const NEGATIVE_PATTERNS = {
-  // For KNOWLEDGE - these indicate personal data request
-  [Intent.KNOWLEDGE]: [
-    /\bmy\b/i,
-    /้ฐฉัน|ของ้ฐ้ัน/
-  ],
+// ============================================================
+// KEYWORD-BASED FAST ROUTING
+// ============================================================
 
-  // For PERSONAL_DATA - these indicate general knowledge
-  [Intent.PERSONAL_DATA]: [
-    /\b(policy|policies|rule|regulation|guideline)\b/i,
-    /\bwhat is\b(?!\s+my)/i,
-    /\bwhen\b(?!\s+.*\bmy\b)/i,
-    /\bwhere\b(?!\s+my)/i,
-    /คือ(อะไร|อย่างไร)(?!\s*ของ้ฐ้ัน)/
-  ]
-}
+/**
+ * Thai school-related keywords - strong indicators for school domain
+ * If ANY of these are present, route to RAG_SEARCH or DATABASE_QUERY
+ */
+const THAI_SCHOOL_KEYWORDS = [
+  // People
+  'นักเรียน', 'นร.', 'นักเรียนทั้งหมด', 'รายชื่อนักเรียน',
+  'ครู', 'อาจารย์', 'ผู้สอน', 'ครูทั้งหมด', 'รายชื่อครู',
+  'ผู้ปกครอง', 'พ่อแม่',
+  'ผู้บริหาร', 'ผู้อำนวยการ', 'ฝ่าย',
+  'พนักงาน', 'บุคลากร',
 
-// Confidence threshold for using LLM fallback
-export const LLM_FALLBACK_THRESHOLD = 0.5
+  // Academic
+  'ห้องเรียน', 'ห้อง', 'คลาส', 'ชั้นเรียน', 'กลุ่ม',
+  'วิชา', 'เรียน', 'สอน', 'บทเรียน', 'หลักสูตร',
+  'เกรด', 'คะแนน', 'ผลการเรียน', 'วิทยาฐานะ',
+  'สอบ', 'ปลายภาค', 'กลางภาค', 'สอบไล่', 'สอบแก้ตัว',
+  'ตารางสอบ', 'ตารางเรียน', 'ตาราง',
 
-// Threshold for ambiguity detection
-const AMBIGUOUS_CONFIDENCE_DIFF = 0.15 // If scores are within this range, it's ambiguous
+  // Attendance/Discipline
+  'การมาเรียน', 'มาสาย', 'ขาดเรียน', 'ลา', 'ลาป่วย', 'ลากิจ',
+  'มาเรียน', 'เข้าเรียน',
+  'ทำโทษ', 'ระงับ', 'แจ้งความดี', 'ความประพฤติ',
 
-// Ambiguous patterns - keywords that could mean either
-const AMBIGUOUS_PATTERNS = [
-  /grades?$/i,
-  /เกรด$/,
-  /คะแนน$/,
-  /attendance$/i,
-  /การมาเรียน$/,
-  /สอบ$/,
-  /exam$/i,
-  /test$/i,
-  /วิชา$/,
-  /class$/i,
-  /schedule$/i,
-  /ตาราง$/
+  // Enrollment/Admin
+  'สมัคร', 'ลงทะเบียน', 'ย้าย', 'ย้ายโรงเรียน',
+  'จบการศึกษา', 'สำเร็จการศึกษา', 'ประกาศนียบัตร',
+  'ประกาศ', 'กฎ', 'กติกา', 'ระเบียบ', 'ข้อบังคับ',
+  'ค่าเทอม', 'ค่าธรรมเนียม', 'เงิน',
+
+  // Facilities/Services
+  'ห้องสมุด', 'โรงอาหาร', 'กิจกรรม', 'ชมรม',
+  'รถรับส่ง', 'รถโรงเรียน', 'รถบัส',
+  'ห้องพยาบาล', 'กายภาพ',
+
+  // Documents
+  'เอกสาร', 'ใบรับรอง', 'ทรานสคริปต์', 'ใบ ปพ.1', 'ใบ ปพ.7',
+  'ใบลา', 'หนังสือรับรอง',
+
+  // Common question words (when combined with school context)
+  'ขอข้อมูล', 'ขอดู', 'อยากรู้', 'อยากทราบ', 'ถามว่า',
+  'มีไหม', 'มีหรือไม่', 'มีกี่', 'จำนวน', 'ทั้งหมด',
+  'รายชื่อ', 'ชื่อ', 'ใคร',
+
+  // Account/Tech
+  'รหัสผ่าน', 'พาสเวิร์ด', 'username', 'password',
+  'เข้าสู่ระบบ', 'login', 'ล็อกอิน', 'สมัครสมาชิก',
+  'แอพ', 'แอป', 'ระบบ', 'เว็บ',
 ]
 
 /**
- * Calculate confidence score based on pattern matches
- * Higher score = more patterns matched, stronger indicators
+ * English school-related keywords
  */
-function calculateConfidence(
-  matches: number,
-  totalPatterns: number,
-  hasNegativeMatch: boolean
-): number {
-  let baseScore = 0.5 + (matches / totalPatterns) * 0.3 // 0.5-0.8 base
+const ENGLISH_SCHOOL_KEYWORDS = [
+  // People
+  'student', 'students', 'pupil', 'learners',
+  'teacher', 'teachers', 'instructor', 'professor', 'staff',
+  'parent', 'guardian', 'father', 'mother',
+  'principal', 'director', 'admin', 'administration',
 
-  // Bonus for multiple matches
-  if (matches >= 2) baseScore += 0.1
-  if (matches >= 3) baseScore += 0.05
+  // Academic
+  'class', 'classes', 'classroom', 'lesson', 'course', 'subject',
+  'grade', 'grades', 'score', 'scores', 'mark', 'marks', 'gpa', 'result',
+  'exam', 'exams', 'test', 'tests', 'quiz', 'final', 'midterm',
+  'schedule', 'timetable', 'calendar',
 
-  // Penalty for negative patterns
-  if (hasNegativeMatch) baseScore -= 0.3
+  // Attendance/Discipline
+  'attendance', 'absent', 'absence', 'late', 'present',
+  'disciplinary', 'discipline', 'punishment', 'suspension', 'warning',
 
-  return Math.max(0.1, Math.min(0.95, baseScore))
+  // Enrollment/Admin
+  'enroll', 'enrollment', 'register', 'registration', 'admission',
+  'graduate', 'graduation', 'diploma', 'certificate', 'transcript',
+  'policy', 'policies', 'rule', 'rules', 'regulation',
+  'tuition', 'fee', 'fees', 'payment',
+
+  // Facilities/Services
+  'library', 'cafeteria', 'canteen', 'activity', 'club',
+  'bus', 'transport', 'transportation',
+  'nurse', 'clinic', 'infirmary',
+
+  // Documents
+  'document', 'documents', 'certificate', 'transcript',
+  'form', 'forms', 'application',
+
+  // Common question words
+  'information', 'info', 'data',
+  'list', 'show', 'display', 'all', 'how many', 'count',
+  'who', 'what', 'where', 'when', 'how',
+
+  // Account/Tech
+  'password', 'account', 'login', 'signin', 'register', 'username',
+  'app', 'application', 'system', 'website', 'portal',
+]
+
+/**
+ * Personal pronouns - indicate PERSONAL_DATA intent
+ */
+const PERSONAL_PRONOUNNS = {
+  thai: ['ฉัน', 'ผม', 'ดิฉัน', 'ของฉัน', 'ของผม', 'ตัวฉัน', 'ตัวผม', 'เรา'],
+  english: ['my', 'mine', 'me', 'i', 'i am', 'i have', 'i need', 'i want']
 }
 
 /**
- * Generate clarification question for ambiguous intents
+ * Knowledge query indicators (NOT personal)
  */
-function getClarificationQuestion(question: string, personalMatches: number, knowledgeMatches: number): string {
+const KNOWLEDGE_INDICATORS = [
+  // Thai
+  /คืออะไร/, /อย่างไร/, /ทำอย่างไร/, /วิธี/, /กฎ/, /กติกา/, /ระเบียบ/, /นโยบาย/,
+  /ประกาศ/, /แจ้ง/, /ประชาสัมพันธ์/, /faq/, /ถาม-ตอบ/,
+  // English
+  /\bwhat is\b/, /\bhow to\b/, /\bhow do\b/, /\bhow does\b/, /\bpolicy\b/, /\brule\b/,
+]
+
+// ============================================================
+// ENTITY DETECTION PATTERNS
+// ============================================================
+
+/**
+ * Detect person names (Thai and English)
+ * Thai: Start with capital letter, 2+ characters
+ * English: First + Last name pattern
+ */
+const PERSON_NAME_PATTERNS = [
+  // Thai name pattern: ชื่อ-นามสกุล (2-3 words, starts with Thai consonant)
+  /(?:[ก-ฮ][ก-�็ัิ-ฺ]{1,5}\s+){1,2}[ก-ฮ][ก-๊็ิ-ืฺ]{1,10}/,
+  // English name pattern: First Last (2+ words, starts with capital)
+  /\b[A-Z][a-z]+\s+[A-Z][a-z]+\b/,
+  // Full name with middle: First Middle Last
+  /\b[A-Z][a-z]+\s+[A-Z]\.?\s+[A-Z][a-z]+\b/,
+]
+
+/**
+ * Student ID patterns (Thai schools)
+ */
+const STUDENT_ID_PATTERNS = [
+  // Generic numeric ID: 6-10 digits
+  /\b\d{6,10}\b/,
+  // ID with prefix
+  /[A-Z]{1,3}\d{4,8}/,
+  // Thai school format
+  /\d{4}-\d{4}/,
+]
+
+/**
+ * Teacher ID patterns
+ */
+const TEACHER_ID_PATTERNS = [
+  /T\d{4,6}/i,
+  /teacher[_-]?\d+/i,
+  /ครู[_-]?\d+/,
+]
+
+/**
+ * Room/Class patterns
+ */
+const ROOM_PATTERNS = [
+  // Thai format: ม.1/1, ม.2/3, etc. (with or without spaces)
+  /\bม\.?\s*[\d\/]+/,
+  /[ก-๛]\.?\s*[\d\/]+/, // Thai letter + . + number
+  // English: Grade 1, Class A, Room 101
+  /\b(?:grade|class|room)\s*\d+/i,
+  // Room number: 3 digits
+  /\b\d{3}\b/,
+  /ห้อง\s*\d+/,
+]
+
+/**
+ * Subject patterns
+ */
+const SUBJECT_PATTERNS = [
+  // Thai subjects
+  /คณิตศาสตร์|วิทยาศาสตร์|ภาษาไทย|ภาษาอังกฤษ|สังคม|ศิลปะ|การงาน|พลศึกษา|ประวัติศาสตร์|ภูมิศาสตร์|ชีววิทยา|เคมี|ฟิสิกส์/,
+  // English subjects
+  /math|english|science|history|geography|biology|chemistry|physics|art|music|pe|physical education/i,
+]
+
+// ============================================================
+// ENTITY DETECTION FUNCTIONS
+// ============================================================
+
+/**
+ * Extract entities from query
+ */
+function detectEntities(query: string): Entity[] {
+  const entities: Entity[] = []
+  const q = query
+
+  // Detect person names
+  for (const pattern of PERSON_NAME_PATTERNS) {
+    const matches = q.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        if (!entities.some(e => e.value === match)) {
+          entities.push({
+            type: 'person_name',
+            value: match,
+            confidence: 0.85
+          })
+        }
+      }
+    }
+  }
+
+  // Detect student IDs
+  for (const pattern of STUDENT_ID_PATTERNS) {
+    const matches = q.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        // Exclude if it's a room number (3 digits)
+        if (!/^\d{3}$/.test(match) && !entities.some(e => e.value === match)) {
+          entities.push({
+            type: 'student_id',
+            value: match,
+            confidence: 0.9
+          })
+        }
+      }
+    }
+  }
+
+  // Detect teacher IDs
+  for (const pattern of TEACHER_ID_PATTERNS) {
+    const matches = q.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        if (!entities.some(e => e.value === match)) {
+          entities.push({
+            type: 'teacher_id',
+            value: match,
+            confidence: 0.95
+          })
+        }
+      }
+    }
+  }
+
+  // Detect rooms/classes
+  for (const pattern of ROOM_PATTERNS) {
+    const matches = q.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        if (!entities.some(e => e.value === match)) {
+          entities.push({
+            type: 'room_number',
+            value: match,
+            confidence: 0.8
+          })
+        }
+      }
+    }
+  }
+
+  // Detect subjects
+  for (const pattern of SUBJECT_PATTERNS) {
+    const matches = q.match(pattern)
+    if (matches) {
+      for (const match of matches) {
+        if (!entities.some(e => e.value === match)) {
+          entities.push({
+            type: 'subject',
+            value: match,
+            confidence: 0.85
+          })
+        }
+      }
+    }
+  }
+
+  return entities
+}
+
+// ============================================================
+// KEYWORD DETECTION FUNCTIONS
+// ============================================================
+
+/**
+ * Detect school-related keywords in query
+ */
+function detectSchoolKeywords(query: string): { thai: string[]; english: string[]; all: string[] } {
+  const q = query.toLowerCase()
+  const thai: string[] = []
+  const english: string[] = []
+
+  for (const keyword of THAI_SCHOOL_KEYWORDS) {
+    if (q.includes(keyword.toLowerCase())) {
+      thai.push(keyword)
+    }
+  }
+
+  for (const keyword of ENGLISH_SCHOOL_KEYWORDS) {
+    if (q.includes(keyword.toLowerCase())) {
+      english.push(keyword)
+    }
+  }
+
+  return { thai, english, all: [...thai, ...english] }
+}
+
+/**
+ * Check if query contains personal pronouns
+ */
+function hasPersonalPronouns(query: string): boolean {
+  const q = query.toLowerCase()
+
+  // Check Thai pronouns
+  for (const pronoun of PERSONAL_PRONOUNNS.thai) {
+    if (q.includes(pronoun)) return true
+  }
+
+  // Check English pronouns (use word boundaries for accuracy)
+  for (const pronoun of PERSONAL_PRONOUNNS.english) {
+    const pattern = new RegExp(`\\b${pronoun}\\b`, 'i')
+    if (pattern.test(q)) return true
+  }
+
+  return false
+}
+
+/**
+ * Check if query is a knowledge query (not personal)
+ */
+function isKnowledgeQuery(query: string): boolean {
+  const q = query.toLowerCase()
+  for (const pattern of KNOWLEDGE_INDICATORS) {
+    if (pattern.test(q)) return true
+  }
+  return false
+}
+
+/**
+ * Check if query is a list/statistics query
+ */
+function isListQuery(query: string): boolean {
+  const q = query.toLowerCase()
+  const listPatterns = [
+    /มี.*กี่/,
+    /จำนวน.*ทั้งหมด/,
+    /รายชื่อ/,
+    /ทั้งหมด.*มี/,
+    /list\s+(all\s+)?/,
+    /show\s+all/,
+    /how\s+many/i,
+    /count/i,
+    /who\s+(are|is)/i,
+  ]
+  return listPatterns.some(p => p.test(q))
+}
+
+// ============================================================
+// INTENT PATTERNS (LEGACY - FOR REFERENCE)
+// ============================================================
+
+const INTENT_PATTERNS = {
+  [Intent.KNOWLEDGE]: [
+    /policy|policies|rule|rules|regulation|guideline/i,
+    /dress code|uniform|เครื่องแบบ/i,
+    /grading (scale|system|policy)/,
+    /how (do|to|can|does).*(apply|register|enroll)/i,
+    /กฎ|กติกา|ระเบียบ|นโยบาย|ประกาศ/,
+    /คือ(อะไร|อย่างไร)/,
+    /วิธี(ลงทะเบียน|เรียน|ทำ)/,
+  ],
+  [Intent.PERSONAL_DATA]: [
+    /\bmy\s+(grades?|scores?|gpa|attendance)\b/i,
+    /เกรดของฉัน|คะแนนของฉัน|ผลการเรียนของฉัน/,
+    /การมาเรียนของฉัน|ตารางเรียนของฉัน/,
+  ]
+}
+
+// ============================================================
+// CONFIDENCE RECOVERY LOGIC
+// ============================================================
+
+/**
+ * Calculate adjusted confidence with keyword/entity boost
+ */
+function calculateAdjustedConfidence(
+  baseConfidence: number,
+  keywords: string[],
+  entities: Entity[],
+  isList: boolean,
+  isKnowledge: boolean
+): { confidence: number; adjustment: number; reason: string } {
+  let confidence = baseConfidence
+  let adjustment = 0
+  const reasons: string[] = []
+
+  // Confidence is too low - apply recovery
+  if (baseConfidence < 0.5) {
+    // Strong boost for school keywords
+    if (keywords.length >= 2) {
+      const boost = 0.3
+      confidence += boost
+      adjustment += boost
+      reasons.push(`${keywords.length} school keywords detected`)
+    } else if (keywords.length === 1) {
+      const boost = 0.2
+      confidence += boost
+      adjustment += boost
+      reasons.push(`school keyword detected: "${keywords[0]}"`)
+    }
+
+    // Boost for entity detection
+    if (entities.length > 0) {
+      const boost = Math.min(entities.length * 0.1, 0.25)
+      confidence += boost
+      adjustment += boost
+      reasons.push(`${entities.length} entity(s) detected`)
+    }
+
+    // Boost for list/statistics queries
+    if (isList) {
+      const boost = 0.35
+      confidence += boost
+      adjustment += boost
+      reasons.push('list/statistics query pattern')
+    }
+
+    // Boost for knowledge indicators
+    if (isKnowledge) {
+      const boost = 0.25
+      confidence += boost
+      adjustment += boost
+      reasons.push('knowledge query indicator')
+    }
+  }
+
+  // Cap confidence at 0.95
+  confidence = Math.min(confidence, 0.95)
+
+  return {
+    confidence,
+    adjustment,
+    reason: reasons.join(', ') || 'no adjustment'
+  }
+}
+
+// ============================================================
+// CONSTANTS
+// ============================================================
+
+export const LLM_FALLBACK_THRESHOLD = 0.5
+const AMBIGUOUS_CONFIDENCE_DIFF = 0.15
+
+// ============================================================
+// MAIN CLASSIFICATION FUNCTION
+// ============================================================
+
+/**
+ * Enhanced intent classification with keyword-based routing and entity detection
+ */
+export function classifyIntent(
+  question: string,
+  userContext?: UserContext
+): IntentClassification {
+  const q = question.toLowerCase().trim()
+  const originalQ = question
+
+  console.log(`\n[Intent] ==================== CLASSIFICATION START ====================`)
+  console.log(`[Intent] Query: "${originalQ}"`)
+
+  // ============================================================
+  // STEP 1: KEYWORD DETECTION (FAST PATH)
+  // ============================================================
+
+  const keywords = detectSchoolKeywords(originalQ)
+  console.log(`[Intent] Keywords detected: ${keywords.all.length > 0 ? keywords.all.join(', ') : 'none'}`)
+
+  // ============================================================
+  // STEP 2: ENTITY DETECTION
+  // ============================================================
+
+  const entities = detectEntities(originalQ)
+  if (entities.length > 0) {
+    console.log(`[Intent] Entities detected:`)
+    entities.forEach(e => {
+      console.log(`[Intent]   - ${e.type}: "${e.value}" (confidence: ${e.confidence})`)
+    })
+  }
+
+  // ============================================================
+  // STEP 3: ADMIN QUERY DETECTION (name + data keyword)
+  // ============================================================
+
+  const hasPersonName = entities.some(e => e.type === 'person_name')
+  // Expanded list of data keywords for admin queries
+  const hasDataKeyword = /(เกรด|คะแนน|ผลสอบ|การมาเรียน|การเข้าเรียน|เข้าเรียน|ขาด|มาสาย|ลา|ตารางเรียน|ตารางสอบ|ค่าเทอม|ค่าเล่าเรียน|ชำระ|พฤติกรรม|ทำโทษ|วินัย|ประวัติ|ข้อมูล|grade|score|attendance|schedule|timetable|tuition|payment|fee|discipline|behavior|profile|information|data)/i.test(q)
+  const isAdminQuery = hasPersonName && hasDataKeyword && !hasPersonalPronouns(q)
+
+  if (isAdminQuery) {
+    const personName = entities.find(e => e.type === 'person_name')?.value || 'Unknown'
+    console.log(`[Intent] ✓ Admin query detected for person: "${personName}"`)
+
+    return {
+      intent: Intent.PERSONAL_DATA,
+      confidence: 0.95,
+      reasoning: `Admin query for student "${personName}" with data keyword`,
+      suggestedAction: userContext?.userId
+        ? `Fetch personal data for "${personName}"`
+        : 'Authentication required for personal data access',
+      matchedKeywords: keywords.all,
+      detectedEntities: entities,
+      routingReason: 'Admin query: person name + data keyword'
+    }
+  }
+
+  // ============================================================
+  // STEP 4: LIST/STATISTICS QUERY DETECTION
+  // ============================================================
+
+  const isList = isListQuery(originalQ)
+  if (isList) {
+    console.log(`[Intent] ✓ List/Statistics query detected`)
+
+    return {
+      intent: Intent.DATABASE_QUERY,
+      confidence: 0.9,
+      reasoning: 'Query asks for list or count of items',
+      suggestedAction: 'Query database for list/count',
+      matchedKeywords: keywords.all,
+      detectedEntities: entities,
+      routingReason: 'List/statistics pattern detected'
+    }
+  }
+
+  // ============================================================
+  // STEP 5: PERSONAL vs KNOWLEDGE CLASSIFICATION
+  // ============================================================
+
+  const hasPersonalPronoun = hasPersonalPronouns(q)
+  const isKnowledge = isKnowledgeQuery(q)
+
+  console.log(`[Intent] Personal pronouns: ${hasPersonalPronoun ? 'yes' : 'no'}`)
+  console.log(`[Intent] Knowledge indicator: ${isKnowledge ? 'yes' : 'no'}`)
+
+  let intent: Intent
+  let baseConfidence: number
+  let reasoning: string
+
+  // PERSONAL_DATA: Has personal pronouns AND school keywords
+  if (hasPersonalPronoun && keywords.all.length > 0) {
+    intent = Intent.PERSONAL_DATA
+    baseConfidence = 0.8
+    reasoning = `Personal pronoun detected with ${keywords.all.length} school keyword(s)`
+
+    console.log(`[Intent] → PERSONAL_DATA (pronoun + school keywords)`)
+  }
+  // KNOWLEDGE: Knowledge indicators OR school keywords without personal pronouns
+  else if (isKnowledge || (keywords.all.length > 0 && !hasPersonalPronoun)) {
+    intent = Intent.KNOWLEDGE
+    baseConfidence = isKnowledge ? 0.85 : 0.7
+    reasoning = isKnowledge
+      ? 'Knowledge query pattern detected'
+      : `School keywords detected without personal pronouns`
+
+    console.log(`[Intent] → KNOWLEDGE (${isKnowledge ? 'pattern' : 'keywords only'})`)
+  }
+  // AMBIGUOUS: Single keyword or school term without context
+  else if (keywords.all.length === 1 && !hasPersonalPronoun && !isKnowledge) {
+    intent = Intent.AMBIGUOUS
+    baseConfidence = 0.4
+    reasoning = `Single school keyword "${keywords.all[0]}" without clear context`
+
+    console.log(`[Intent] → AMBIGUOUS (single keyword without context)`)
+  }
+  // PERSON_NAME_ONLY: Just a person name without context - treat as PERSONAL_DATA
+  else if (hasPersonName && !hasPersonalPronoun && keywords.all.length === 0) {
+    intent = Intent.PERSONAL_DATA
+    baseConfidence = 0.65
+    reasoning = `Person name detected ("${entities.find(e => e.type === 'person_name')?.value}"), assuming student profile request`
+
+    console.log(`[Intent] → PERSONAL_DATA (person name only, defaulting to profile)`)
+  }
+  // UNKNOWN: No school keywords detected
+  else {
+    intent = Intent.UNKNOWN
+    baseConfidence = 0.2
+    reasoning = 'No school-related keywords detected'
+
+    console.log(`[Intent] → UNKNOWN (no school keywords)`)
+  }
+
+  // ============================================================
+  // STEP 6: CONFIDENCE RECOVERY
+  // ============================================================
+
+  const adjusted = calculateAdjustedConfidence(baseConfidence, keywords.all, entities, isList, isKnowledge)
+
+  console.log(`[Intent] Confidence: ${baseConfidence.toFixed(2)} → ${adjusted.confidence.toFixed(2)} (${adjusted.reason})`)
+
+  // ============================================================
+  // STEP 7: DETERMINED ROUTING
+  // ============================================================
+
+  let finalIntent = intent
+  let finalConfidence = adjusted.confidence
+
+  // Final routing logic
+  let routingAction: string
+  let needsFallback = finalConfidence < LLM_FALLBACK_THRESHOLD
+
+  // If we have school keywords/entities but low confidence, route to RAG_SEARCH
+  if (needsFallback && (keywords.all.length > 0 || entities.length > 0)) {
+    console.log(`[Intent] ⚠ Confidence recovery triggered: boosting to RAG_SEARCH`)
+
+    if (intent === Intent.PERSONAL_DATA) {
+      routingAction = userContext?.userId ? 'DB_QUERY_SECURE' : 'AUTH_REQUIRED'
+    } else if (intent === Intent.UNKNOWN && keywords.all.length > 0) {
+      // Unknown intent but has school keywords - treat as KNOWLEDGE
+      finalIntent = Intent.KNOWLEDGE
+      finalConfidence = 0.65
+      routingAction = 'RAG_SEARCH'
+      needsFallback = false
+    } else {
+      routingAction = 'RAG_SEARCH'
+    }
+  } else {
+    routingAction = getRoutingAction(intent, !!userContext?.userId)
+  }
+
+  console.log(`[Intent] Routing: ${routingAction}`)
+  console.log(`[Intent] ==================== CLASSIFICATION END ====================\n`)
+
+  // ============================================================
+  // STEP 8: BUILD RESPONSE
+  // ============================================================
+
+  const result: IntentClassification = {
+    intent: finalIntent,
+    confidence: finalConfidence,
+    reasoning: adjusted.reason ? `${reasoning} (${adjusted.reason})` : reasoning,
+    suggestedAction: getSuggestedAction(finalIntent, routingAction, userContext),
+    needsLLMFallback: needsFallback,
+    matchedKeywords: keywords.all,
+    detectedEntities: entities,
+    confidenceAdjustment: adjusted.adjustment,
+    routingReason: routingAction
+  }
+
+  // Add clarification for ambiguous
+  if (finalIntent === Intent.AMBIGUOUS) {
+    result.clarificationQuestion = getClarificationQuestion(originalQ)
+  }
+
+  return result
+}
+
+/**
+ * Get suggested action based on intent and routing
+ */
+function getSuggestedAction(intent: Intent, routing: string, userContext?: UserContext): string {
+  switch (intent) {
+    case Intent.PERSONAL_DATA:
+      return userContext?.userId ? 'Query database for personal data' : 'Authentication required'
+    case Intent.DATABASE_QUERY:
+      return 'Query database for list/statistics'
+    case Intent.KNOWLEDGE:
+      return 'Search RAG knowledge base'
+    case Intent.AMBIGUOUS:
+      return 'Ask user to clarify'
+    case Intent.UNKNOWN:
+      return routing === 'RAG_SEARCH' ? 'Search knowledge base as fallback' : 'Ask for clarification'
+    default:
+      return 'Unknown action'
+  }
+}
+
+/**
+ * Get clarification question for ambiguous queries
+ */
+function getClarificationQuestion(question: string): string {
   const q = question.toLowerCase()
 
   // Thai clarification
@@ -206,139 +758,12 @@ function getClarificationQuestion(question: string, personalMatches: number, kno
   return `Are you asking about "${question}" in general, or specifically about your own situation?`
 }
 
-/**
- * Classify intent using pattern matching (fast, no LLM call)
- * Supports both English and Thai queries
- * Returns confidence score - if below threshold, use LLM fallback
- */
-export function classifyIntent(
-  question: string,
-  userContext?: UserContext
-): IntentClassification {
-  const q = question.toLowerCase().trim()
-
-  // ============================================================
-  // ADMIN QUERY DETECTION - Check for specific student/teacher data requests
-  // ============================================================
-
-  // Pattern 1: Thai-style queries - "ขอข้อมูลของ [Name]", "เกรดของ [Name]"
-  const thaiAdminPattern = /ขอ(ข้อมูล|เกรด|คะแนน|ผลสอบ).*ของ\s+([a-z฀-๿]+(?:\s+[a-z฀-๿]+)*)/i
-  const thaiNameMatch = q.match(thaiAdminPattern)
-
-  // Pattern 2: English-style queries - "grades for [Name]", "show [Name]'s grades"
-  const englishAdminPattern = /(grade|score|attendance|schedule|class|subject).*\s+(?:for|of)\s+([a-z]+(?:\s+[a-z]+)*)/i
-  const englishNameMatch = q.match(englishAdminPattern)
-
-  // Pattern 3: Direct name with data keyword - "[Name]'s grades", "Ava Martinez grades"
-  const directNamePattern = /([a-z฀-๿]+(?:\s+[a-z฀-๿]+){1,2}).*?\s+(เกรด|คะแนน|grades?|scores?|attendance)/i
-  const directNameMatch = q.match(directNamePattern)
-
-  // Pattern 4: "ข้อมูลของ [Name]" (data of [Name])
-  const dataOfPattern = /ข้อมูล.*ของ\s+([a-z฀-๿]+(?:\s+[a-z฀-๿]+)*)/i
-  const dataOfMatch = q.match(dataOfPattern)
-
-  // Extract name from any matched pattern
-  let extractedName: string | null = null
-  if (thaiNameMatch?.[2]) extractedName = thaiNameMatch[2]
-  else if (englishNameMatch?.[2]) extractedName = englishNameMatch[2]
-  else if (directNameMatch?.[1]) extractedName = directNameMatch[1]
-  else if (dataOfMatch?.[1]) extractedName = dataOfMatch[1]
-
-  // Check if this looks like an admin query (has name + data keyword)
-  const hasDataKeyword = /(grade|score|attendance|schedule|class|subject|วิชา|เกรด|คะแนน|การมาเรียน|ตาราง|ข้อมูล)/i.test(q)
-  const isAdminQuery = extractedName && hasDataKeyword && !/^(me|my|i|ฉัน|ของฉัน)$/i.test(extractedName)
-
-  if (isAdminQuery) {
-    return {
-      intent: Intent.PERSONAL_DATA,
-      confidence: 0.95,
-      reasoning: `Detected admin query for student "${extractedName}" with data keyword`,
-      suggestedAction: userContext?.userId
-        ? `Fetch personal data for "${extractedName}"`
-        : 'Authentication required for personal data access'
-    }
-  }
-
-  // Check for personal data patterns
-  const personalPatterns = INTENT_PATTERNS[Intent.PERSONAL_DATA]
-  const personalMatches = personalPatterns.filter(p => p.test(q))
-
-  // Check for negative patterns (would disqualify personal data)
-  const personalNegatives = NEGATIVE_PATTERNS[Intent.PERSONAL_DATA] || []
-  const hasPersonalNegative = personalNegatives.some(p => p.test(q))
-
-  // Check for knowledge patterns
-  const knowledgePatterns = INTENT_PATTERNS[Intent.KNOWLEDGE]
-  const knowledgeMatches = knowledgePatterns.filter(p => p.test(q))
-
-  // Check for negative patterns (would disqualify knowledge - i.e., indicates personal)
-  const knowledgeNegatives = NEGATIVE_PATTERNS[Intent.KNOWLEDGE] || []
-  const hasKnowledgeNegative = knowledgeNegatives.some(p => p.test(q))
-
-  // Calculate scores for both intents
-  const personalScore = personalMatches.length > 0 && !hasPersonalNegative
-    ? calculateConfidence(personalMatches.length, personalPatterns.length, false)
-    : 0
-
-  const knowledgeScore = knowledgeMatches.length > 0 && !hasKnowledgeNegative
-    ? calculateConfidence(knowledgeMatches.length, knowledgePatterns.length, hasKnowledgeNegative)
-    : 0
-
-  // Check for ambiguity:
-  // 1. Both types have matches AND scores are close
-  // 2. Or query matches ambiguous patterns (single keyword like "grades", "เกรด")
-  const hasAmbiguousPattern = AMBIGUOUS_PATTERNS.some(p => p.test(q))
-  const bothMatched = personalMatches.length > 0 && knowledgeMatches.length > 0
-  const scoresAreClose = Math.abs(personalScore - knowledgeScore) < AMBIGUOUS_CONFIDENCE_DIFF
-
-  // AMBIGUOUS: Both matched with close scores, or matches ambiguous pattern with low personal indicators
-  if ((bothMatched && scoresAreClose) || (hasAmbiguousPattern && personalMatches.length <= 1 && knowledgeMatches.length <= 2)) {
-    return {
-      intent: Intent.AMBIGUOUS,
-      confidence: Math.max(personalScore, knowledgeScore, 0.4),
-      reasoning: `Query could be ${personalMatches > 0 ? 'personal' : ''}${knowledgeMatches > 0 ? ' knowledge' : ''} - needs clarification`,
-      suggestedAction: 'Ask user to clarify their intent',
-      clarificationQuestion: getClarificationQuestion(question, personalMatches.length, knowledgeMatches.length)
-    }
-  }
-
-  // PERSONAL_DATA: Strong personal indicators
-  if (personalMatches.length > 0 && !hasPersonalNegative && personalScore > knowledgeScore) {
-    return {
-      intent: Intent.PERSONAL_DATA,
-      confidence: personalScore,
-      reasoning: `Matched ${personalMatches.length}/${personalPatterns.length} personal data pattern(s)`,
-      suggestedAction: userContext?.userId
-        ? `Query database for user's personal data`
-        : 'Authentication required for personal data access',
-      needsLLMFallback: personalScore < LLM_FALLBACK_THRESHOLD
-    }
-  }
-
-  // KNOWLEDGE: Strong knowledge indicators
-  if (knowledgeMatches.length > 0 && !hasKnowledgeNegative) {
-    return {
-      intent: Intent.KNOWLEDGE,
-      confidence: knowledgeScore,
-      reasoning: `Matched ${knowledgeMatches.length}/${knowledgePatterns.length} knowledge pattern(s)`,
-      suggestedAction: 'Search RAG knowledge base',
-      needsLLMFallback: knowledgeScore < LLM_FALLBACK_THRESHOLD
-    }
-  }
-
-  // Default to unknown with low confidence
-  return {
-    intent: Intent.UNKNOWN,
-    confidence: 0.2,
-    reasoning: 'No clear intent pattern detected',
-    suggestedAction: 'Ask user for clarification or search knowledge base as fallback',
-    needsLLMFallback: true // Always use LLM for unknown
-  }
-}
+// ============================================================
+// HYBRID CLASSIFICATION (with LLM fallback)
+// ============================================================
 
 /**
  * Hybrid classification: pattern match first, use LLM if confidence is low
- * This is the recommended function for production use
  */
 export async function classifyIntentHybrid(
   question: string,
@@ -354,14 +779,17 @@ export async function classifyIntentHybrid(
   }
 
   // Low confidence - use LLM for better accuracy
-  console.log(`[Intent] Low confidence (${patternResult.confidence}), using LLM fallback`)
-  return await classifyIntentWithLLM(question, userContext)
+  console.log(`[Intent] Low confidence (${patternResult.confidence.toFixed(2)}), using LLM fallback`)
+  return await classifyIntentWithLLM(question, userContext, patternResult)
 }
 
-// Optional: LLM-based classification for higher accuracy (fallback)
+/**
+ * LLM-based classification (fallback)
+ */
 export async function classifyIntentWithLLM(
   question: string,
-  userContext?: UserContext
+  userContext?: UserContext,
+  patternResult?: IntentClassification
 ): Promise<IntentClassification> {
   try {
     const prompt = `You are an intent classifier for a school management AI assistant.
@@ -369,32 +797,36 @@ export async function classifyIntentWithLLM(
 Classify the user's query into ONE of these categories:
 
 1. KNOWLEDGE - General information, policies, rules, FAQs, explanations
-   Examples: "What is the dress code?", "How do I register?", "When is spring break?", "How is GPA calculated?"
-   Thai: "กฎเครื่องแบบคืออะไร", "เกรดเฉลี่ยคืออะไร", "สอบแก้ตัวได้กี่ครั้ง"
+   Examples: "What is the dress code?", "How do I register?", "When is spring break?"
+   Thai: "กฎเครื่องแบบคืออะไร", "เกรดเฉลี่ยคืออะไร"
 
 2. PERSONAL_DATA - User-specific data (their own grades, attendance, schedule)
-   Examples: "What are my grades?", "Show my attendance", "How am I doing?", "My GPA"
-   Thai: "เกรดของฉัน", "การมาเรียนของฉัน", "ฉันสอบได้กี่คะแนน"
+   Examples: "What are my grades?", "Show my attendance"
+   Thai: "เกรดของฉัน", "การมาเรียนของฉัน"
 
-3. AMBIGUOUS - Could be either general or personal, needs clarification
-   Examples: "grades", "attendance", "exam", "เกรด", "สอบ"
-   These single words without context are ambiguous
+3. DATABASE_QUERY - Lists, statistics, counts of items in database
+   Examples: "How many students are there?", "List all teachers"
+   Thai: "มีนักเรียนกี่คน", "รายชื่อครูทั้งหมด"
 
 4. UNKNOWN - Unclear or not school-related
 
 Query: "${question}"
 User role: ${userContext?.role || 'unknown'}
 
-Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, AMBIGUOUS, or UNKNOWN). No other text.`
+IMPORTANT:
+- If the query contains school-related terms (students, teachers, grades, attendance, etc.) BUT is unclear, classify as KNOWLEDGE not UNKNOWN
+- Be lenient with school queries - when in doubt, prefer KNOWLEDGE over UNKNOWN
+- Only use UNKNOWN for clearly non-school topics
+
+Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, DATABASE_QUERY, or UNKNOWN). No other text.`
 
     let intentLabel: string
 
     // Check which LLM provider to use
     const provider = process.env.LLM_PROVIDER || 'minimax'
-    console.log(`[Intent] Using provider: ${provider}`)
+    console.log(`[Intent] Using LLM provider: ${provider}`)
 
     if (provider === 'minimax' && process.env.MINIMAX_API_KEY) {
-      // Use MiniMax for classification
       const apiKey = process.env.MINIMAX_API_KEY
       const isNewFormat = apiKey.startsWith('sk-')
       const apiUrl = isNewFormat
@@ -425,54 +857,82 @@ Return ONLY the intent label (KNOWLEDGE, PERSONAL_DATA, AMBIGUOUS, or UNKNOWN). 
       })
 
       if (!response.ok) {
-        throw new Error(`MiniMax API error: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`MiniMax API HTTP error: ${response.status} - ${errorText}`)
       }
 
       const data = await response.json()
+
+      // Check MiniMax base_resp for errors
+      if (data.base_resp && data.base_resp.status_code !== 0) {
+        throw new Error(`MiniMax API Error (${data.base_resp.status_code}): ${data.base_resp.status_msg}`)
+      }
+
       intentLabel = (data.choices?.[0]?.message?.content || data.reply || '').trim().toUpperCase()
     } else {
-      // Use Gemini for classification
       const model = genAI.getGenerativeModel({ model: MODEL })
       const result = await model.generateContent(prompt)
       intentLabel = result.response.text().trim().toUpperCase()
     }
 
-    const intent = Object.values(Intent).includes(intentLabel.toLowerCase() as Intent)
-      ? intentLabel.toLowerCase() as Intent
-      : Intent.UNKNOWN
+    // Map LLM response to Intent enum
+    const validIntents = [Intent.KNOWLEDGE, Intent.PERSONAL_DATA, Intent.DATABASE_QUERY, Intent.UNKNOWN]
+    let intent = validIntents.find(i => intentLabel.includes(i.toUpperCase())) || Intent.UNKNOWN
 
-    // High confidence for LLM-based classification
-    const confidence = intent === Intent.UNKNOWN ? 0.4 : 0.9
+    // LLM fallback recovery: if pattern found school keywords but LLM says UNKNOWN, override to KNOWLEDGE
+    if (intent === Intent.UNKNOWN && patternResult && patternResult.matchedKeywords && patternResult.matchedKeywords.length > 0) {
+      console.log(`[Intent] LLM said UNKNOWN, but pattern found school keywords - overriding to KNOWLEDGE`)
+      intent = Intent.KNOWLEDGE
+    }
 
-    const clarificationQuestion = intent === Intent.AMBIGUOUS
-      ? getClarificationQuestion(question, 0, 0)
-      : undefined
+    const confidence = intent === Intent.UNKNOWN ? 0.4 : 0.85
+
+    console.log(`[Intent] LLM classification: ${intent} (confidence: ${confidence.toFixed(2)})`)
 
     return {
-
       intent,
       confidence,
-      reasoning: `LLM-based classification (${provider === 'minimax' ? 'MiniMax' : 'Gemini'})`,
-      suggestedAction: intent === Intent.PERSONAL_DATA
-        ? 'Query database with user authentication'
-        : intent === Intent.KNOWLEDGE
-        ? 'Search RAG knowledge base'
-        : intent === Intent.AMBIGUOUS
-        ? 'Ask user to clarify their intent'
-        : 'Ask for clarification',
-      clarificationQuestion
+      reasoning: `LLM-based classification (${provider})`,
+      suggestedAction: getSuggestedAction(intent, getRoutingAction(intent, !!userContext?.userId), userContext),
+      matchedKeywords: patternResult?.matchedKeywords,
+      detectedEntities: patternResult?.detectedEntities,
+      routingReason: `LLM: ${provider}`
     }
   } catch (error) {
-    console.error('[Intent] LLM classification failed, using pattern matching', error)
-    return classifyIntent(question, userContext)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    console.error('[Intent] LLM classification failed:', errorMessage)
+
+    // Return pattern result as fallback
+    if (patternResult) {
+      // Boost pattern result confidence to avoid LLM fallback loop
+      return {
+        ...patternResult,
+        confidence: Math.max(patternResult.confidence, 0.6),
+        routingReason: 'Pattern match (LLM failed)',
+        reasoning: `Pattern match (LLM failed: ${errorMessage})`
+      }
+    }
+
+    // Last resort
+    return {
+      intent: Intent.UNKNOWN,
+      confidence: 0.3,
+      reasoning: `LLM failed: ${errorMessage}`,
+      suggestedAction: 'Ask for clarification',
+      routingReason: 'LLM failed - unknown'
+    }
   }
 }
 
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+
 /**
- * Check if intent requires database access (vs RAG)
+ * Check if intent requires database access
  */
 export function requiresDatabaseAccess(intent: Intent): boolean {
-  return intent === Intent.PERSONAL_DATA
+  return intent === Intent.PERSONAL_DATA || intent === Intent.DATABASE_QUERY
 }
 
 /**
@@ -484,10 +944,13 @@ export function getRoutingAction(intent: Intent, hasAuth: boolean): string {
       return 'RAG_SEARCH'
     case Intent.PERSONAL_DATA:
       return hasAuth ? 'DB_QUERY_SECURE' : 'AUTH_REQUIRED'
+    case Intent.DATABASE_QUERY:
+      return 'DB_QUERY'
     case Intent.AMBIGUOUS:
       return 'CLARIFICATION_NEEDED'
     case Intent.UNKNOWN:
     default:
-      return 'CLARIFICATION'
+      // NEW: Try RAG search for unknown instead of immediate clarification
+      return 'RAG_SEARCH_FALLBACK'
   }
 }
