@@ -1,45 +1,43 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { LayoutDashboard, BarChart2, Calendar, FileText, User, BookOpen, Edit3, CheckCircle, Bell, Settings, LogOut, Menu, X } from 'lucide-react'
 
 const sidebarLinks = {
   student: [
-    { path: '/student/dashboard', label: 'Dashboard', icon: '🏠' },
-    { path: '/student/grades', label: 'My Grades', icon: '📊' },
-    { path: '/student/schedule', label: 'Schedule', icon: '📅' },
-    { path: '/student/assignments', label: 'Assignments', icon: '📝' },
-    { path: '/student/profile', label: 'Profile', icon: '👤' }
+    { path: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/student/grades', label: 'My Grades', icon: BarChart2 },
+    { path: '/student/schedule', label: 'Schedule', icon: Calendar },
+    { path: '/student/report-card', label: 'Report Card', icon: FileText },
+    { path: '/student/profile', label: 'Profile', icon: User }
   ],
   teacher: [
-    { path: '/teacher/dashboard', label: 'Dashboard', icon: '🏠' },
-    { path: '/teacher/classes', label: 'My Classes', icon: '📚' },
-    { path: '/teacher/grades', label: 'Manage Grades', icon: '📊' },
-    { path: '/teacher/assignments', label: 'Assignments', icon: '📝' },
-    { path: '/teacher/attendance', label: 'Attendance', icon: '✅' },
-    { path: '/teacher/profile', label: 'Profile', icon: '👤' }
+    { path: '/teacher/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/teacher/classes', label: 'My Classes', icon: BookOpen },
+    { path: '/teacher/grades', label: 'Manage Grades', icon: BarChart2 },
+    { path: '/teacher/assignments', label: 'Assignments', icon: Edit3 },
+    { path: '/teacher/profile', label: 'Profile', icon: User }
   ],
   parent: [
-    { path: '/parent/dashboard', label: 'Dashboard', icon: '🏠' },
-    { path: '/parent/child-grades', label: 'Child Grades', icon: '📊' },
-    { path: '/parent/attendance', label: 'Attendance', icon: '✅' },
-    { path: '/parent/profile', label: 'Profile', icon: '👤' }
-  ],
-  admin: [
-    { path: '/admin/dashboard', label: 'Dashboard', icon: '🏠' },
-    { path: '/admin/users', label: 'Manage Users', icon: '👥' },
-    { path: '/admin/students', label: 'Students', icon: '🎓' },
-    { path: '/admin/teachers', label: 'Teachers', icon: '👨‍🏫' },
-    { path: '/admin/classes', label: 'Classes', icon: '📚' },
-    { path: '/admin/settings', label: 'Settings', icon: '⚙️' }
+    { path: '/parent/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/parent/child-grades', label: 'Child Grades', icon: BarChart2 },
+    { path: '/parent/attendance', label: 'Attendance', icon: CheckCircle },
+    { path: '/parent/profile', label: 'Profile', icon: User }
   ]
 }
 
 const DashboardLayout = () => {
   const { user, userRole, profileData, signOut } = useAuth()
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    if (window.innerWidth >= 1024) {
+      setSidebarOpen(true)
+    }
+  }, [])
 
   const handleSignOut = async () => {
     await signOut()
@@ -49,62 +47,82 @@ const DashboardLayout = () => {
   const links = sidebarLinks[userRole] || []
 
   const roleLabels = {
-    student: 'Student',
-    teacher: 'Teacher',
-    parent: 'Parent',
-    admin: 'Administrator'
+    student: 'Student Portal',
+    teacher: 'Teacher Portal',
+    parent: 'Parent Portal'
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen bg-cream bg-dots">
+      {/* Sidebar Backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-navy/10 z-40 lg:hidden animate-fade-in"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen transition-transform ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } lg:translate-x-0 w-64`}
+        className={`fixed top-4 left-0 z-50 h-[calc(100vh-2rem)] transition-all duration-300 ease-out ${
+          sidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full w-72'
+        } lg:translate-x-0 lg:w-72`}
       >
-        <div className="h-full px-3 py-4 overflow-y-auto bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-3 px-4 py-4 mb-4">
-            <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white text-xl">📚</span>
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white">School MS</h1>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{roleLabels[userRole]}</p>
-            </div>
-          </Link>
-
-          {/* Navigation */}
-          <nav className="space-y-1">
-            {links.map((link) => {
-              const isActive = location.pathname === link.path
-              return (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`sidebar-link ${isActive ? 'active' : ''}`}
-                >
-                  <span className="text-xl">{link.icon}</span>
-                  <span>{link.label}</span>
-                </Link>
-              )
-            })}
-          </nav>
-
-          {/* User Info */}
-          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 dark:border-gray-700">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-gray-300 dark:bg-gray-600 rounded-full flex items-center justify-center">
-                <span className="text-gray-600 dark:text-gray-300 font-medium">
-                  {profileData?.name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-                </span>
+        <div className="h-full flex flex-col">
+          {/* Clean Sidebar - No Glassmorphism */}
+          <div className="flex-1 bg-white rounded-2xl shadow-soft border border-cream-dark overflow-hidden flex flex-col">
+            {/* Logo Section */}
+            <Link
+              to={`/${userRole}/dashboard`}
+              className="flex items-center gap-3 p-6 border-b border-cream-dark hover:bg-cream/30 transition-colors"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <div className="w-11 h-11 bg-navy rounded-xl flex items-center justify-center">
+                <BookOpen className="w-5 h-5 text-white" strokeWidth={2} />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                  {profileData?.name || user?.email?.split('@')[0] || 'User'}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
+              <div>
+                <h1 className="text-base font-display font-bold text-navy">Lumaid</h1>
+                <p className="text-xs text-text-muted">{roleLabels[userRole]}</p>
+              </div>
+            </Link>
+
+            {/* Navigation */}
+            <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto custom-scrollbar">
+              {links.map((link, index) => {
+                const isActive = location.pathname === link.path
+                const Icon = link.icon
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 ${
+                      isActive
+                        ? 'bg-cream text-navy font-medium'
+                        : 'text-text-secondary hover:bg-cream/50 hover:text-navy'
+                    }`}
+                    onClick={() => setSidebarOpen(false)}
+                  >
+                    <Icon size={18} strokeWidth={2} className={isActive ? 'text-navy' : ''} />
+                    <span>{link.label}</span>
+                  </Link>
+                )
+              })}
+            </nav>
+
+            {/* User Profile Section */}
+            <div className="p-4 border-t border-cream-dark">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-cream rounded-xl flex items-center justify-center">
+                  <span className="text-sm font-semibold text-navy">
+                    {profileData?.name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-navy truncate">
+                    {profileData?.name || user?.email?.split('@')[0] || 'User'}
+                  </p>
+                  <p className="text-xs text-text-muted truncate capitalize">{userRole}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -112,65 +130,72 @@ const DashboardLayout = () => {
       </aside>
 
       {/* Main Content */}
-      <div className={`${sidebarOpen ? 'lg:ml-64' : ''} transition-all`}>
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'lg:ml-72 lg:pl-4' : ''}`}>
         {/* Top Navigation Bar */}
-        <nav className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 lg:hidden"
-            >
-              <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+        <nav className="sticky top-0 z-30 bg-white border-b border-cream-dark">
+          <div className="flex items-center justify-between px-4 lg:px-6 py-4">
+            <div className="flex items-center gap-4">
+              {/* Mobile Menu Button */}
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="lg:hidden p-2 rounded-lg hover:bg-cream transition-colors"
+              >
+                {sidebarOpen ? <X size={20} className="text-navy" /> : <Menu size={20} className="text-navy" />}
+              </button>
 
-            <div className="flex items-center gap-4 ml-auto">
+              {/* Page Title */}
+              <div>
+                <h2 className="text-lg font-display font-semibold text-navy">
+                  {links.find(l => l.path === location.pathname)?.label || 'Dashboard'}
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
               {/* Notifications */}
-              <button className="relative p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-                <svg className="w-6 h-6 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
+              <button className="relative p-2 rounded-lg hover:bg-cream transition-colors">
+                <Bell size={18} className="text-text-secondary" />
               </button>
 
               {/* User Menu */}
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                  className="flex items-center gap-2 p-1.5 pr-3 rounded-lg hover:bg-cream transition-colors"
                 >
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">
+                  <div className="w-8 h-8 bg-cream rounded-lg flex items-center justify-center">
+                    <span className="text-sm font-medium text-navy">
                       {profileData?.name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
                     </span>
                   </div>
-                  <svg className="w-4 h-4 text-gray-600 dark:text-gray-300 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
                 </button>
 
                 {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-medium border border-cream-dark py-1 animate-scale-in origin-top-right">
                     <Link
                       to={`/${userRole}/profile`}
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="flex items-center gap-3 px-3 py-2 text-sm text-navy hover:bg-cream transition-colors"
                       onClick={() => setUserMenuOpen(false)}
                     >
+                      <User size={16} />
                       Profile
                     </Link>
-                    <Link
-                      to="/settings"
-                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      onClick={() => setUserMenuOpen(false)}
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        // Navigate to settings if needed
+                      }}
+                      className="flex items-center gap-3 w-full px-3 py-2 text-sm text-navy hover:bg-cream transition-colors"
                     >
+                      <Settings size={16} />
                       Settings
-                    </Link>
-                    <hr className="my-1 border-gray-200 dark:border-gray-700" />
+                    </button>
+                    <hr className="my-1 border-cream-dark" />
                     <button
                       onClick={handleSignOut}
-                      className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      className="flex items-center gap-3 w-full px-3 py-2 text-sm text-red-500 hover:bg-red-50 transition-colors"
                     >
+                      <LogOut size={16} />
                       Sign Out
                     </button>
                   </div>
@@ -181,18 +206,12 @@ const DashboardLayout = () => {
         </nav>
 
         {/* Page Content */}
-        <main className="p-6">
-          <Outlet />
+        <main className="p-4 lg:p-6">
+          <div className="animate-fade-in">
+            <Outlet />
+          </div>
         </main>
       </div>
-
-      {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-50 z-30 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        ></div>
-      )}
     </div>
   )
 }

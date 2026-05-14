@@ -1,6 +1,6 @@
 // Separate Supabase client for Teacher System with isolated storage
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from './types'
+// import type { Database } from './types'
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, getAuthStorageKey } from './config'
 
 // Clear expired tokens for teacher system
@@ -34,7 +34,7 @@ const teacherStorage = {
   },
 }
 
-export const teacherSupabase = createClient<Database>(
+export const teacherSupabase = createClient(
   SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY,
   {

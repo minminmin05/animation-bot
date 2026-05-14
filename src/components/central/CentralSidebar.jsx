@@ -15,10 +15,15 @@ import {
   BookOpen,
   Award,
   Building,
+  Building2,
   UserCog,
   LogOut,
   UserPlus,
   Link,
+  Users as UserGroup,
+  Bot,
+  Database,
+  ClipboardCheck
 } from 'lucide-react'
 
 const navigationItems = [
@@ -47,9 +52,21 @@ const navigationItems = [
     roles: ['admin', 'owner'],
   },
   {
+    title: 'Student Enrollment',
+    url: '/admin/enrollment',
+    icon: UserGroup,
+    roles: ['admin', 'owner'],
+  },
+  {
     title: 'Teacher Management',
     url: '/admin/teachers',
     icon: GraduationCap,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'Department Management',
+    url: '/admin/departments',
+    icon: Building2,
     roles: ['admin', 'owner'],
   },
   {
@@ -65,27 +82,27 @@ const navigationItems = [
     roles: ['admin', 'owner'],
   },
   {
-    title: 'School Facilities',
-    url: '/admin/facilities',
-    icon: Building,
-    roles: ['admin', 'owner'],
-  },
-  {
-    title: 'System Links',
-    url: '/admin/links',
-    icon: Link,
-    roles: ['admin', 'owner'],
-  },
-  {
-    title: 'Admin Settings',
-    url: '/admin/settings',
-    icon: UserCog,
+    title: 'Student Grades',
+    url: '/admin/student-grades',
+    icon: ClipboardCheck,
     roles: ['admin', 'owner'],
   },
   {
     title: 'System Settings',
-    url: '/admin/system',
+    url: '/admin/settings',
     icon: Settings,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'AI Assistant',
+    url: '/admin/ai-assistant',
+    icon: Bot,
+    roles: ['admin', 'owner'],
+  },
+  {
+    title: 'Knowledge Base',
+    url: '/admin/knowledge-base',
+    icon: Database,
     roles: ['admin', 'owner'],
   },
 ]

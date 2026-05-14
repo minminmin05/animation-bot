@@ -22,9 +22,9 @@ api_url = "http://localhost:54323"
 
 [inbucket]
 enabled = true
-port = 54324
-smtp_port = 54325
-pop3_port = 54326
+port = 55000
+smtp_port = 55001
+pop3_port = 55002
 
 [storage]
 enabled = true
@@ -38,3 +38,14 @@ jwt_expiry = 3600
 
 [analytics]
 enabled = false
+
+[functions.create-user]
+enabled = true
+verify_jwt = true
+import_map = "./functions/create-user/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/create-user/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/create-user/*.html" ]

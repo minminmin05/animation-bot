@@ -1,6 +1,6 @@
 // Separate Supabase client for Central/Admin System with isolated storage
 import { createClient } from '@supabase/supabase-js'
-import type { Database } from './types'
+// import type { Database } from './types'
 import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, getAuthStorageKey } from './config'
 
 // Clear expired tokens for central system
@@ -34,7 +34,7 @@ const centralStorage = {
   },
 }
 
-export const centralSupabase = createClient<Database>(
+export const centralSupabase = createClient(
   SUPABASE_URL,
   SUPABASE_PUBLISHABLE_KEY,
   {

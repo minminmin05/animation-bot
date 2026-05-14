@@ -109,23 +109,89 @@ export const AuthProvider = ({ children }) => {
 
       if (error) {
         console.error('Error fetching user role:', error.message)
-        // Set default role instead of throwing
-        setUserRole('admin') // Default fallback
+        // Try to determine role from profile tables
+        await determineRoleFromProfile(userId)
         return
       }
 
       console.log('User role found:', data?.role)
-      setUserRole(data?.role || 'admin')
+      const role = data?.role
+      if (!role) {
+        // No role found - check profile tables
+        await determineRoleFromProfile(userId)
+      } else if (role === 'admin') {
+        // Admin role is valid directly from users table
+        setUserRole('admin')
+      } else {
+        setUserRole(role)
+      }
 
       // Fetch additional profile data based on role (non-critical)
-      if (data?.role) {
-        fetchProfileData(userId, data.role).catch(err =>
+      if (role) {
+        fetchProfileData(userId, role).catch(err =>
           console.log('Profile fetch failed (non-critical):', err.message)
         )
       }
     } catch (error) {
       console.error('Error in fetchUserRole:', error)
-      setUserRole('admin') // Default fallback
+      await determineRoleFromProfile(userId)
+    }
+  }
+
+  const determineRoleFromProfile = async (userId) => {
+    // Check if user exists in any profile table
+    const tables = [
+      { name: 'teachers', role: 'teacher' },
+      { name: 'students', role: 'student' },
+      { name: 'parents', role: 'parent' }
+    ]
+
+    try {
+      for (const { name, role } of tables) {
+        const { data, error } = await supabase
+          .from(name)
+          .select('user_id')
+          .eq('user_id', userId)
+          .maybeSingle() // Use maybeSingle instead of single to avoid errors
+
+        if (data) {
+          console.log(`Found user in ${name}, setting role to: ${role}`)
+          setUserRole(role)
+
+          // Update users table
+          const { error: updateError } = await supabase
+            .from('users')
+            .upsert({ id: userId, role: role })
+
+          if (updateError) {
+            console.log('Could not update users table:', updateError.message)
+          } else {
+            console.log('Updated users table with correct role')
+          }
+          return
+        }
+      }
+
+      // If no role found - check auth metadata
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user?.user_metadata?.role) {
+        const metaRole = user.user_metadata.role
+        console.log(`Using role from auth metadata: ${metaRole}`)
+        setUserRole(metaRole)
+
+        // Update users table
+        await supabase
+          .from('users')
+          .upsert({ id: userId, role: metaRole, email: user.email })
+        return
+      }
+
+      // Still no role found
+      console.log('No role found for user, defaulting to student')
+      setUserRole('student') // Default fallback instead of null
+    } catch (error) {
+      console.error('Error in determineRoleFromProfile:', error)
+      setUserRole('student') // Safe fallback
     }
   }
 

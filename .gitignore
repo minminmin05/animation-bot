@@ -48,6 +48,7 @@ lerna-debug.log*
 .supabase
 supabase/.branches
 supabase/.temp
+.mcp.json
 
 # Logs
 logs
@@ -55,3 +56,13 @@ logs
 
 # OS
 Thumbs.db
+
+# TTS generated audio
+cache/audio/*
+generated_audio/*
+tmp/audio/*
+*.mp3
+*.m4a
+
+# Keep folders
+!cache/audio/.gitkeep

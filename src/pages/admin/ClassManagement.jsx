@@ -1,12 +1,98 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../config/supabaseClient'
 import { Spinner } from '../../components/Spinner'
+import { Edit2, Trash2, X, BookOpen, Plus, MapPin, Calendar, Award, Clock, User } from 'lucide-react'
+
+const ClassCard = ({ cls, onEdit, onDelete }) => {
+  return (
+    <div className="card card-hover group">
+      <div className="p-5">
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center group-hover:bg-accent/20 transition-colors">
+              <BookOpen size={22} className="text-accent" strokeWidth={2} />
+            </div>
+            <div>
+              <h3 className="font-display font-semibold text-navy">{cls.name}</h3>
+              <p className="text-sm text-text-muted">{cls.subject}</p>
+            </div>
+          </div>
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button
+              onClick={() => onEdit(cls)}
+              className="p-2 rounded-lg hover:bg-cream text-text-muted hover:text-accent transition-colors"
+              title="Edit class"
+            >
+              <Edit2 size={16} strokeWidth={2} />
+            </button>
+            <button
+              onClick={() => onDelete(cls.id)}
+              className="p-2 rounded-lg hover:bg-coral/10 text-text-muted hover:text-coral transition-colors"
+              title="Delete class"
+            >
+              <Trash2 size={16} strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted flex items-center gap-2">
+              <User size={14} strokeWidth={2} />
+              Teacher
+            </span>
+            <span className="font-medium text-navy">{cls.teachers?.name || 'Not assigned'}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted flex items-center gap-2">
+              <Award size={14} strokeWidth={2} />
+              Grade
+            </span>
+            <span className="font-medium text-navy">{cls.grade_level}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted">Section</span>
+            <span className="font-medium text-navy">{cls.section || 'N/A'}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted">Credits</span>
+            <span className="font-medium text-navy">{cls.credits || 1}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted flex items-center gap-2">
+              <MapPin size={14} strokeWidth={2} />
+              Room
+            </span>
+            <span className="font-medium text-navy">{cls.room_number || 'TBD'}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-muted flex items-center gap-2">
+              <Calendar size={14} strokeWidth={2} />
+              Year
+            </span>
+            <span className="font-medium text-navy">{cls.academic_year}</span>
+          </div>
+          {cls.schedule && (
+            <div className="flex items-start justify-between text-sm pt-2 border-t border-cream-dark/50">
+              <span className="text-text-muted flex items-center gap-2">
+                <Clock size={14} strokeWidth={2} />
+                Schedule
+              </span>
+              <span className="font-medium text-navy text-right text-xs max-w-[60%]">{cls.schedule}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 const ClassManagement = () => {
   const [classes, setClasses] = useState([])
   const [teachers, setTeachers] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [editingClass, setEditingClass] = useState(null)
   const [formData, setFormData] = useState({
     name: '',
     subject: '',
@@ -15,7 +101,8 @@ const ClassManagement = () => {
     section: '',
     academic_year: new Date().getFullYear().toString(),
     room_number: '',
-    schedule: ''
+    schedule: '',
+    credits: ''
   })
 
   useEffect(() => {
@@ -24,13 +111,26 @@ const ClassManagement = () => {
 
   const fetchData = async () => {
     try {
-      const [classesData, teachersData] = await Promise.all([
-        supabase.from('classes').select('*, teachers (name)').order('name'),
-        supabase.from('teachers').select('*, users (email)')
+      const [classesResult, teachersResult] = await Promise.all([
+        supabase.rpc('admin_get_classes_with_teachers'),
+        supabase.from('teachers').select('*')
       ])
 
-      if (classesData.data) setClasses(classesData.data)
-      if (teachersData.data) setTeachers(teachersData.data)
+      if (classesResult.error) {
+        console.error('Error fetching classes:', classesResult.error)
+      } else if (classesResult.data) {
+        const classesWithTeacher = classesResult.data.map(cls => ({
+          ...cls,
+          teachers: { name: cls.teacher_name }
+        }))
+        setClasses(classesWithTeacher)
+      }
+
+      if (teachersResult.error) {
+        console.error('Error fetching teachers:', teachersResult.error)
+      } else if (teachersResult.data) {
+        setTeachers(teachersResult.data)
+      }
     } catch (error) {
       console.error('Error fetching data:', error)
     } finally {
@@ -38,31 +138,96 @@ const ClassManagement = () => {
     }
   }
 
+  const openCreateModal = () => {
+    setEditingClass(null)
+    setFormData({
+      name: '',
+      subject: '',
+      teacher_id: '',
+      grade_level: '',
+      section: '',
+      academic_year: new Date().getFullYear().toString(),
+      room_number: '',
+      schedule: '',
+      credits: ''
+    })
+    setShowModal(true)
+  }
+
+  const openEditModal = (cls) => {
+    setEditingClass(cls)
+    setFormData({
+      name: cls.name || '',
+      subject: cls.subject || '',
+      teacher_id: cls.teacher_id || '',
+      grade_level: cls.grade_level?.toString() || '',
+      section: cls.section || '',
+      academic_year: cls.academic_year || new Date().getFullYear().toString(),
+      room_number: cls.room_number || '',
+      schedule: cls.schedule || '',
+      credits: cls.credits?.toString() || ''
+    })
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingClass(null)
+    setFormData({
+      name: '',
+      subject: '',
+      teacher_id: '',
+      grade_level: '',
+      section: '',
+      academic_year: new Date().getFullYear().toString(),
+      room_number: '',
+      schedule: '',
+      credits: ''
+    })
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
 
+    if (!formData.teacher_id) {
+      alert('Please select a teacher')
+      return
+    }
+
+    const classData = {
+      name: formData.name,
+      subject: formData.subject,
+      teacher_id: formData.teacher_id,
+      grade_level: parseInt(formData.grade_level, 10),
+      section: formData.section || null,
+      academic_year: formData.academic_year,
+      room_number: formData.room_number || null,
+      schedule: formData.schedule || null,
+      credits: parseFloat(formData.credits) || 1.00
+    }
+
     try {
-      const { error } = await supabase
-        .from('classes')
-        .insert(formData)
+      let error
+      if (editingClass) {
+        const result = await supabase
+          .from('classes')
+          .update(classData)
+          .eq('id', editingClass.id)
+        error = result.error
+      } else {
+        const result = await supabase
+          .from('classes')
+          .insert(classData)
+        error = result.error
+      }
 
       if (error) throw error
 
-      fetchData()
-      setShowModal(false)
-      setFormData({
-        name: '',
-        subject: '',
-        teacher_id: '',
-        grade_level: '',
-        section: '',
-        academic_year: new Date().getFullYear().toString(),
-        room_number: '',
-        schedule: ''
-      })
+      await fetchData()
+      closeModal()
     } catch (error) {
-      console.error('Error creating class:', error)
-      alert('Failed to create class')
+      console.error('Error saving class:', error)
+      alert(`Failed to ${editingClass ? 'update' : 'create'} class: ${error.message}`)
     }
   }
 
@@ -92,96 +257,66 @@ const ClassManagement = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 animate-fade-in">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Class Management</h1>
-          <p className="text-gray-500 dark:text-gray-400">Manage all classes in the system</p>
+          <h1 className="text-2xl lg:text-3xl font-display font-bold text-navy">Class Management</h1>
+          <p className="text-text-secondary mt-1">
+            {classes.length} {classes.length === 1 ? 'class' : 'classes'} in the system
+          </p>
         </div>
         <button
-          onClick={() => setShowModal(true)}
-          className="btn-primary"
+          onClick={openCreateModal}
+          className="btn-primary flex items-center gap-2"
         >
-          + Create Class
+          <Plus className="w-4 h-4" />
+          Create Class
         </button>
       </div>
 
       {/* Classes Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 animate-fade-in" style={{ animationDelay: '100ms' }}>
         {classes.length === 0 ? (
-          <div className="col-span-full bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center">
-            <div className="text-4xl mb-4">📚</div>
-            <p className="text-gray-500 dark:text-gray-400">No classes found. Create your first class!</p>
+          <div className="col-span-full card text-center p-12">
+            <div className="w-16 h-16 bg-cream rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <BookOpen size={32} className="text-text-muted" strokeWidth={2} />
+            </div>
+            <p className="text-text-secondary font-medium">No classes found</p>
+            <p className="text-text-muted text-sm mt-2">Create your first class to get started!</p>
           </div>
         ) : (
           classes.map((cls) => (
-            <div
+            <ClassCard
               key={cls.id}
-              className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">{cls.name}</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{cls.subject}</p>
-                </div>
-                <button
-                  onClick={() => handleDelete(cls.id)}
-                  className="text-gray-400 hover:text-red-500"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Teacher:</span>
-                  <span className="text-gray-900 dark:text-white">{cls.teachers?.name || 'Not assigned'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Grade:</span>
-                  <span className="text-gray-900 dark:text-white">{cls.grade_level}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Section:</span>
-                  <span className="text-gray-900 dark:text-white">{cls.section || 'N/A'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Room:</span>
-                  <span className="text-gray-900 dark:text-white">{cls.room_number || 'TBD'}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-gray-500 dark:text-gray-400">Year:</span>
-                  <span className="text-gray-900 dark:text-white">{cls.academic_year}</span>
-                </div>
-              </div>
-            </div>
+              cls={cls}
+              onEdit={openEditModal}
+              onDelete={handleDelete}
+            />
           ))
         )}
       </div>
 
-      {/* Create Class Modal */}
+      {/* Create/Edit Class Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-              <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Create Class</h2>
+        <div className="fixed inset-0 bg-navy/20 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-strong max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in">
+            <div className="flex items-center justify-between p-6 border-b border-cream-dark">
+              <h2 className="text-xl font-display font-semibold text-navy">
+                {editingClass ? 'Edit Class' : 'Create Class'}
+              </h2>
               <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                onClick={closeModal}
+                className="text-text-muted hover:text-navy transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <X size={24} strokeWidth={2} />
               </button>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Class Name
+                <label className="block text-sm font-medium text-navy mb-2">
+                  Class Name *
                 </label>
                 <input
                   type="text"
@@ -194,8 +329,8 @@ const ClassManagement = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Subject
+                <label className="block text-sm font-medium text-navy mb-2">
+                  Subject *
                 </label>
                 <input
                   type="text"
@@ -208,8 +343,8 @@ const ClassManagement = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                  Teacher
+                <label className="block text-sm font-medium text-navy mb-2">
+                  Teacher *
                 </label>
                 <select
                   required
@@ -217,17 +352,24 @@ const ClassManagement = () => {
                   onChange={(e) => setFormData({ ...formData, teacher_id: e.target.value })}
                   className="input-field"
                 >
-                  <option value="">Select a teacher</option>
-                  {teachers.map((teacher) => (
-                    <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
-                  ))}
+                  <option value="">-- Select a teacher --</option>
+                  {teachers.length === 0 ? (
+                    <option disabled>No teachers available</option>
+                  ) : (
+                    teachers.map((teacher) => (
+                      <option key={teacher.id} value={teacher.id}>{teacher.name}</option>
+                    ))
+                  )}
                 </select>
+                {teachers.length === 0 && (
+                  <p className="text-xs text-gold mt-1.5">Please add teachers first in User Management</p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Grade Level
+                  <label className="block text-sm font-medium text-navy mb-2">
+                    Grade Level *
                   </label>
                   <input
                     type="number"
@@ -240,7 +382,7 @@ const ClassManagement = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-navy mb-2">
                     Section
                   </label>
                   <input
@@ -255,8 +397,8 @@ const ClassManagement = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Academic Year
+                  <label className="block text-sm font-medium text-navy mb-2">
+                    Academic Year *
                   </label>
                   <input
                     type="text"
@@ -268,7 +410,7 @@ const ClassManagement = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  <label className="block text-sm font-medium text-navy mb-2">
                     Room Number
                   </label>
                   <input
@@ -282,7 +424,25 @@ const ClassManagement = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-navy mb-2">
+                  Credits *
+                </label>
+                <input
+                  type="number"
+                  min="0.5"
+                  max="10"
+                  step="0.5"
+                  required
+                  value={formData.credits}
+                  onChange={(e) => setFormData({ ...formData, credits: e.target.value })}
+                  className="input-field"
+                  placeholder="1.0"
+                />
+                <p className="text-xs text-text-muted mt-1.5">Number of credits for this course (e.g., 1.0, 1.5, 2.0)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-navy mb-2">
                   Schedule (optional)
                 </label>
                 <textarea
@@ -295,10 +455,12 @@ const ClassManagement = () => {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <button type="submit" className="flex-1 btn-primary">Create Class</button>
+                <button type="submit" className="flex-1 btn-primary">
+                  {editingClass ? 'Update Class' : 'Create Class'}
+                </button>
                 <button
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={closeModal}
                   className="flex-1 btn-secondary"
                 >
                   Cancel

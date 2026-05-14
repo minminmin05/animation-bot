@@ -2,6 +2,19 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../config/supabaseClient'
 import { Spinner } from '../../components/Spinner'
+import { Baby, School, BarChart3, CheckCircle, FileText, ChevronRight } from 'lucide-react'
+
+const StatCard = ({ title, value, icon: Icon }) => (
+  <div className="stat-card">
+    <div className="flex items-start justify-between">
+      <div className="w-10 h-10 bg-cream rounded-xl flex items-center justify-center">
+        <Icon size={18} className="text-text-muted" strokeWidth={2} />
+      </div>
+    </div>
+    <p className="text-sm font-medium text-text-muted mt-4">{title}</p>
+    <p className="text-2xl font-display font-bold text-navy mt-1">{value}</p>
+  </div>
+)
 
 const ParentDashboard = () => {
   const { profileData } = useAuth()
@@ -40,7 +53,6 @@ const ParentDashboard = () => {
 
   const fetchChildData = async (childId) => {
     try {
-      // Fetch grades
       const { data: gradesData } = await supabase
         .from('grades')
         .select('*, classes (subject, name)')
@@ -50,7 +62,6 @@ const ParentDashboard = () => {
 
       if (gradesData) setChildGrades(gradesData)
 
-      // Fetch attendance
       const { data: attendanceData } = await supabase
         .from('attendance')
         .select('*')
@@ -69,12 +80,10 @@ const ParentDashboard = () => {
     fetchChildData(child.id)
   }
 
-  // Calculate average
   const averageGrade = childGrades.length > 0
     ? (childGrades.reduce((sum, g) => sum + (g.grade || 0), 0) / childGrades.length).toFixed(1)
     : 'N/A'
 
-  // Calculate attendance
   const presentDays = childAttendance.filter(a => a.status === 'present').length
   const attendanceRate = childAttendance.length > 0
     ? Math.round((presentDays / childAttendance.length) * 100)
@@ -88,34 +97,42 @@ const ParentDashboard = () => {
     )
   }
 
+  const firstName = profileData?.name?.split(' ')[0] || 'Parent'
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-green-600 to-green-700 rounded-2xl p-6 text-white">
-        <h1 className="text-2xl font-bold">Welcome, {profileData?.name || 'Parent'}! 👋</h1>
-        <p className="text-green-100 mt-1">Monitor your child's progress and stay updated</p>
-      </div>
+      {/* Welcome Header */}
+      <header className="animate-fade-in">
+        <h1 className="text-2xl lg:text-3xl font-display font-bold text-navy">
+          Welcome, {firstName}
+        </h1>
+        <p className="text-text-secondary mt-1">
+          Monitor your child's progress and stay updated
+        </p>
+      </header>
 
       {/* Child Selector */}
       {children.length > 1 && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Select Child
-          </label>
-          <div className="flex flex-wrap gap-2">
-            {children.map((child) => (
-              <button
-                key={child.id}
-                onClick={() => handleChildSelect(child)}
-                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                  selectedChild?.id === child.id
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-                }`}
-              >
-                {child.name}
-              </button>
-            ))}
+        <div className="card animate-fade-in" style={{ animationDelay: '100ms' }}>
+          <div className="p-4">
+            <label className="block text-sm font-medium text-navy mb-3">
+              Viewing progress for:
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {children.map((child) => (
+                <button
+                  key={child.id}
+                  onClick={() => handleChildSelect(child)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                    selectedChild?.id === child.id
+                      ? 'bg-accent text-white'
+                      : 'bg-cream text-navy hover:bg-cream-dark'
+                  }`}
+                >
+                  {child.name}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -124,48 +141,57 @@ const ParentDashboard = () => {
         <>
           {/* Stats Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Class</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{selectedChild.class || 'N/A'}</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Grade Level</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{selectedChild.grade_level || 'N/A'}</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Average Grade</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{averageGrade}%</p>
-            </div>
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-              <p className="text-sm text-gray-500 dark:text-gray-400">Attendance</p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white mt-1">{attendanceRate}%</p>
-            </div>
+            <StatCard
+              title="Class"
+              value={selectedChild.class || 'N/A'}
+              icon={School}
+            />
+            <StatCard
+              title="Grade"
+              value={selectedChild.grade_level || 'N/A'}
+              icon={BarChart3}
+            />
+            <StatCard
+              title="Average"
+              value={`${averageGrade}%`}
+              icon={FileText}
+            />
+            <StatCard
+              title="Attendance"
+              value={`${attendanceRate}%`}
+              icon={CheckCircle}
+            />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Recent Grades */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Recent Grades</h2>
-                <button className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400">
-                  View All →
+            <div className="card card-hover animate-fade-in" style={{ animationDelay: '150ms' }}>
+              <div className="p-5 border-b border-cream-dark flex items-center justify-between">
+                <h2 className="text-base font-display font-semibold text-navy">Recent Grades</h2>
+                <button className="text-sm font-medium text-accent hover:text-accent-hover flex items-center gap-1">
+                  View all <ChevronRight size={16} strokeWidth={2} />
                 </button>
               </div>
-              <div className="p-4">
+              <div className="p-5">
                 {childGrades.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400 text-center py-8">No grades recorded yet</p>
+                  <div className="text-center py-12">
+                    <div className="w-14 h-14 bg-cream rounded-xl flex items-center justify-center mx-auto mb-3">
+                      <FileText size={24} strokeWidth={2} className="text-text-muted" />
+                    </div>
+                    <p className="text-text-secondary text-sm">No grades recorded yet</p>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {childGrades.map((grade) => (
-                      <div key={grade.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                      <div key={grade.id} className="flex items-center justify-between p-3 bg-cream/50 rounded-xl">
                         <div>
-                          <p className="font-medium text-gray-900 dark:text-white">{grade.classes?.subject || 'Subject'}</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">{grade.term}</p>
+                          <p className="font-medium text-navy text-sm">{grade.classes?.subject || 'Subject'}</p>
+                          <p className="text-xs text-text-muted">{grade.term}</p>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          grade.grade >= 80 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                          grade.grade >= 60 ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                        <span className={`px-3 py-1 rounded-full text-sm font-bold border-2 ${
+                          grade.grade >= 80 ? 'border-sage text-sage bg-sage/10' :
+                          grade.grade >= 60 ? 'border-gold text-gold bg-gold/10' :
+                          'border-coral text-coral bg-coral/10'
                         }`}>
                           {grade.grade || 'N/A'}%
                         </span>
@@ -176,38 +202,41 @@ const ParentDashboard = () => {
               </div>
             </div>
 
-            {/* Recent Attendance */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-              <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Attendance Record</h2>
-                <button className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400">
-                  View All →
+            {/* Attendance Record */}
+            <div className="card card-hover animate-fade-in" style={{ animationDelay: '200ms' }}>
+              <div className="p-5 border-b border-cream-dark flex items-center justify-between">
+                <h2 className="text-base font-display font-semibold text-navy">Attendance</h2>
+                <button className="text-sm font-medium text-accent hover:text-accent-hover flex items-center gap-1">
+                  View all <ChevronRight size={16} strokeWidth={2} />
                 </button>
               </div>
-              <div className="p-4">
+              <div className="p-5">
                 {childAttendance.length === 0 ? (
-                  <p className="text-gray-500 dark:text-gray-400 text-center py-8">No attendance records</p>
+                  <div className="text-center py-12">
+                    <CheckCircle size={40} strokeWidth={2} className="text-text-muted mx-auto mb-3 opacity-50" />
+                    <p className="text-text-secondary text-sm">No attendance records</p>
+                  </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead>
-                        <tr className="text-left text-sm text-gray-500 dark:text-gray-400">
+                        <tr className="text-left text-sm text-text-muted border-b border-cream-dark">
                           <th className="pb-3 font-medium">Date</th>
                           <th className="pb-3 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {childAttendance.slice(0, 5).map((record) => (
-                          <tr key={record.id} className="border-t border-gray-100 dark:border-gray-700">
-                            <td className="py-3 text-gray-900 dark:text-white">
-                              {new Date(record.date).toLocaleDateString()}
+                          <tr key={record.id} className="border-b border-cream-dark/50">
+                            <td className="py-3 text-navy text-sm">
+                              {new Date(record.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                             </td>
                             <td className="py-3">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                record.status === 'present' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                                record.status === 'absent' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                                record.status === 'late' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' :
-                                'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-400'
+                              <span className={`px-2.5 py-1 rounded-lg text-xs font-medium border-2 ${
+                                record.status === 'present' ? 'border-sage text-sage bg-sage/10' :
+                                record.status === 'absent' ? 'border-coral text-coral bg-coral/10' :
+                                record.status === 'late' ? 'border-gold text-gold bg-gold/10' :
+                                'border-cream-dark text-text-muted bg-cream/50'
                               }`}>
                                 {record.status}
                               </span>
@@ -223,10 +252,12 @@ const ParentDashboard = () => {
           </div>
         </>
       ) : (
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-12 text-center">
-          <div className="text-4xl mb-4">👶</div>
-          <p className="text-gray-500 dark:text-gray-400">No children linked to your account</p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-2">Please contact the school administrator to link your child's account.</p>
+        <div className="card text-center p-12 animate-fade-in">
+          <div className="w-16 h-16 bg-cream rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Baby size={32} strokeWidth={2} className="text-text-muted" />
+          </div>
+          <p className="text-text-secondary font-medium">No children linked to your account</p>
+          <p className="text-text-muted text-sm mt-2">Please contact the school administrator to link your child's account.</p>
         </div>
       )}
     </div>

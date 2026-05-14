@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "9e1c8b3103f92fa8092568a44fe64858de7c5c9dc65ce4bea8f168080e889cfd"
+    },
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": "skill/SKILL.md",
+      "computedHash": "42f2193fa20975959576a76d33e7f357bfe1d62001285ad03080cc3813398ac9"
+    },
+    "playwright-cli": {
+      "source": "microsoft/playwright-cli",
+      "sourceType": "github",
+      "skillPath": "skills/playwright-cli/SKILL.md",
+      "computedHash": "a07462654e72ec3b463aa0f3af744c320c57808505abe49e44845436e0050a1a"
+    },
+    "remotion": {
+      "source": "google-labs-code/stitch-skills",
+      "sourceType": "github",
+      "skillPath": "skills/remotion/SKILL.md",
+      "computedHash": "b3c84d4942732bcd17b47de0a89f9561c460d718b81e0970521077e809d3b990"
+    },
+    "verification-loop": {
+      "source": "affaan-m/everything-claude-code",
+      "sourceType": "github",
+      "skillPath": "skills/verification-loop/SKILL.md",
+      "computedHash": "c936d8f1c28920133a6dd6b4c70e9784315f64f71b8d8bb69e61fa8e044cb175"
+    }
+  }
+}

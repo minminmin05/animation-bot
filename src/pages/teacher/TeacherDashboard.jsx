@@ -1,23 +1,82 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../config/supabaseClient'
 import { Spinner } from '../../components/Spinner'
+import {
+  BookOpen,
+  Users,
+  FileText,
+  Clock,
+  ChevronRight,
+  PlusCircle,
+  BarChart3,
+  CheckCircle,
+  MessageSquare,
+} from 'lucide-react'
+
+const StatCard = ({ title, value, icon: Icon, color = 'blue' }) => {
+  const colorClasses = {
+    blue: { bg: 'bg-blue-50', text: 'text-blue-600', iconBg: 'bg-blue-100' },
+    green: { bg: 'bg-sage/10', text: 'text-sage', iconBg: 'bg-sage/20' },
+    purple: { bg: 'bg-purple-50', text: 'text-purple-600', iconBg: 'bg-purple-100' },
+    orange: { bg: 'bg-orange-50', text: 'text-orange-600', iconBg: 'bg-orange-100' },
+  }
+
+  const colors = colorClasses[color] || colorClasses.blue
+
+  return (
+    <div className={`stat-card ${colors.bg} border-navy/10`}>
+      <div className="flex items-start justify-between">
+        <div className={`w-12 h-12 rounded-xl ${colors.iconBg} flex items-center justify-center`}>
+          <Icon size={22} className={colors.text} strokeWidth={2} />
+        </div>
+      </div>
+      <p className="text-sm font-medium text-text-muted mt-4">{title}</p>
+      <p className="text-3xl font-display font-bold text-navy mt-1">{value}</p>
+    </div>
+  )
+}
 
 const TeacherDashboard = () => {
-  const { profileData } = useAuth()
+  const { profileData, user } = useAuth()
   const [classes, setClasses] = useState([])
   const [students, setStudents] = useState([])
   const [assignments, setAssignments] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetchData()
-  }, [])
+    if (user?.id) {
+      fetchData()
+    }
+  }, [user?.id, profileData?.id])
 
   const fetchData = async () => {
+    let teacherId = profileData?.id
+
+    if (!teacherId && user?.id) {
+      const { data: teacherData, error: teacherError } = await supabase
+        .from('teachers')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (teacherError) {
+        console.error('Error fetching teacher:', teacherError)
+      } else if (teacherData) {
+        teacherId = teacherData.id
+      }
+    }
+
+    if (!teacherId) {
+      console.error('No teacher_id found. User may not be a teacher.')
+      setLoading(false)
+      return
+    }
+
     try {
-      // Fetch teacher's classes
-      const { data: classesData } = await supabase
+      setLoading(true)
+
+      const { data: classesData, error: classesError } = await supabase
         .from('classes')
         .select(`
           *,
@@ -25,23 +84,29 @@ const TeacherDashboard = () => {
             students (*)
           )
         `)
-        .eq('teacher_id', profileData?.id)
+        .eq('teacher_id', teacherId)
+
+      if (classesError) {
+        console.error('Error fetching classes:', classesError)
+      }
 
       if (classesData) {
         setClasses(classesData)
-        // Collect all students
         const allStudents = classesData.flatMap(c =>
           c.student_enrollments?.map(se => se.students).filter(Boolean) || []
         )
         setStudents(allStudents)
       }
 
-      // Fetch assignments
-      const { data: assignmentsData } = await supabase
+      const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('assignments')
         .select('*')
-        .eq('teacher_id', profileData?.id)
+        .eq('teacher_id', teacherId)
         .order('due_date', { ascending: true })
+
+      if (assignmentsError) {
+        console.error('Error fetching assignments:', assignmentsError)
+      }
 
       if (assignmentsData) setAssignments(assignmentsData)
     } catch (error) {
@@ -53,130 +118,101 @@ const TeacherDashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
         <Spinner size="large" />
       </div>
     )
   }
 
+  const firstName = profileData?.name?.split(' ')[0] || user?.user_metadata?.full_name?.split(' ')[0] || 'Teacher'
+
   return (
     <div className="space-y-6">
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-purple-600 to-purple-700 rounded-2xl p-6 text-white">
-        <h1 className="text-2xl font-bold">Welcome back, {profileData?.name || 'Teacher'}! 👋</h1>
-        <p className="text-purple-100 mt-1">{profileData?.subject || 'Teacher'} • {profileData?.department || 'Department'}</p>
-      </div>
+      {/* Welcome Header - Simplified */}
+      <header className="animate-fade-in">
+        <h1 className="text-2xl lg:text-3xl font-display font-bold text-navy">
+          Welcome back, {firstName}
+        </h1>
+        <p className="text-text-secondary mt-1 flex items-center gap-2">
+          <BookOpen size={16} strokeWidth={2} />
+          {profileData?.subject || 'Teacher'} {profileData?.department ? `• ${profileData.department}` : ''}
+        </p>
+      </header>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Total Classes</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{classes.length}</p>
-            </div>
-            <div className="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center text-2xl">
-              📚
-            </div>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Total Students</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{students.length}</p>
-            </div>
-            <div className="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-2xl">
-              👥
-            </div>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Active Assignments</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{assignments.length}</p>
-            </div>
-            <div className="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center text-2xl">
-              📝
-            </div>
-          </div>
-        </div>
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-6 border border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Submissions Pending</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">12</p>
-            </div>
-            <div className="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center text-2xl">
-              ⏳
-            </div>
-          </div>
-        </div>
+        <StatCard
+          title="Classes"
+          value={classes.length}
+          icon={BookOpen}
+          color="blue"
+        />
+        <StatCard
+          title="Students"
+          value={students.length}
+          icon={Users}
+          color="green"
+        />
+        <StatCard
+          title="Assignments"
+          value={assignments.length}
+          icon={FileText}
+          color="purple"
+        />
+        <StatCard
+          title="Pending"
+          value="12"
+          icon={Clock}
+          color="orange"
+        />
       </div>
 
       {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* My Classes */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">My Classes</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400">
-              View All →
-            </button>
-          </div>
-          <div className="p-4">
-            {classes.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No classes assigned</p>
-            ) : (
-              <div className="space-y-3">
-                {classes.map((cls) => (
-                  <div key={cls.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-white">{cls.name}</p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Grade {cls.grade_level} • {cls.section || 'N/A'} • {cls.student_enrollments?.length || 0} students
-                      </p>
-                    </div>
-                    <span className="px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 rounded-full text-sm">
-                      {cls.room_number || 'TBD'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Upcoming Assignments */}
-        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
-          <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Upcoming Deadlines</h2>
-            <button className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400">
-              View All →
+        {/* Upcoming Deadlines */}
+        <div className="lg:col-span-2 card card-hover animate-fade-in" style={{ animationDelay: '150ms' }}>
+          <div className="p-5 border-b border-cream-dark flex items-center justify-between">
+            <h2 className="text-base font-display font-semibold text-navy flex items-center gap-2">
+              <Clock size={18} strokeWidth={2} className="text-accent" />
+              Upcoming Deadlines
+            </h2>
+            <button className="text-sm font-medium text-accent hover:text-accent-hover flex items-center gap-1">
+              View all <ChevronRight size={16} strokeWidth={2} />
             </button>
           </div>
-          <div className="p-4">
+          <div className="p-5">
             {assignments.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">No upcoming assignments</p>
+              <div className="flex flex-col items-center justify-center py-12 text-text-muted">
+                <FileText size={40} strokeWidth={2} className="opacity-30 mb-3" />
+                <p className="text-sm">No upcoming assignments</p>
+              </div>
             ) : (
               <div className="space-y-3">
                 {assignments.slice(0, 5).map((assignment) => {
                   const dueDate = new Date(assignment.due_date)
                   const isOverdue = dueDate < new Date()
                   return (
-                    <div key={assignment.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{assignment.title}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{classes.find(c => c.id === assignment.class_id)?.name || 'Class'}</p>
+                    <div
+                      key={assignment.id}
+                      className="flex items-center justify-between p-4 bg-cream/50 rounded-xl hover:bg-cream transition-colors group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${isOverdue ? 'bg-coral/10 text-coral' : 'bg-blue-50 text-blue-600'}`}>
+                          <FileText size={18} strokeWidth={2} />
+                        </div>
+                        <div>
+                          <p className="font-medium text-navy text-sm">{assignment.title}</p>
+                          <p className="text-xs text-text-muted">{classes.find(c => c.id === assignment.class_id)?.name || 'Class'}</p>
+                        </div>
                       </div>
-                      <span className={`px-3 py-1 rounded-full text-sm ${
+                      <div className={`px-3 py-1 rounded-full text-xs font-medium ${
                         isOverdue
-                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                          : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                          ? 'bg-coral/10 text-coral border border-coral/20'
+                          : 'bg-sage/10 text-sage border border-sage/20'
                       }`}>
-                        {dueDate.toLocaleDateString()}
-                      </span>
+                        {dueDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      </div>
                     </div>
                   )
                 })}
@@ -184,28 +220,61 @@ const TeacherDashboard = () => {
             )}
           </div>
         </div>
-      </div>
 
-      {/* Quick Actions */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <button className="p-4 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg transition-colors">
-            <div className="text-2xl mb-2">📝</div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Create Assignment</p>
-          </button>
-          <button className="p-4 bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg transition-colors">
-            <div className="text-2xl mb-2">📊</div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Enter Grades</p>
-          </button>
-          <button className="p-4 bg-purple-50 dark:bg-purple-900/20 hover:bg-purple-100 dark:hover:bg-purple-900/30 rounded-lg transition-colors">
-            <div className="text-2xl mb-2">✅</div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Take Attendance</p>
-          </button>
-          <button className="p-4 bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 rounded-lg transition-colors">
-            <div className="text-2xl mb-2">📧</div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">Send Message</p>
-          </button>
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Quick Actions */}
+          <div className="card animate-fade-in" style={{ animationDelay: '200ms' }}>
+            <div className="p-5 border-b border-cream-dark">
+              <h2 className="text-base font-display font-semibold text-navy">Quick Actions</h2>
+            </div>
+            <div className="p-4 grid grid-cols-2 gap-3">
+              {[
+                { icon: PlusCircle, label: 'New Task', color: 'text-blue-600', bg: 'bg-blue-50' },
+                { icon: BarChart3, label: 'Grades', color: 'text-sage', bg: 'bg-sage/10' },
+                { icon: CheckCircle, label: 'Attendance', color: 'text-purple-600', bg: 'bg-purple-50' },
+                { icon: MessageSquare, label: 'Message', color: 'text-orange-600', bg: 'bg-orange-50' }
+              ].map((action, idx) => (
+                <button
+                  key={idx}
+                  className={`${action.bg} p-4 rounded-xl flex flex-col items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-transform`}
+                >
+                  <action.icon size={20} strokeWidth={2} className={action.color} />
+                  <span className="text-xs font-medium text-navy">{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* My Classes */}
+          <div className="card card-hover animate-fade-in" style={{ animationDelay: '250ms' }}>
+            <div className="p-5 border-b border-cream-dark flex items-center justify-between">
+              <h2 className="text-base font-display font-semibold text-navy">My Classes</h2>
+              <ChevronRight size={16} strokeWidth={2} className="text-text-muted" />
+            </div>
+            <div className="p-4">
+              {classes.length === 0 ? (
+                <p className="text-text-muted text-center py-4 text-sm">No classes yet</p>
+              ) : (
+                <div className="space-y-2">
+                  {classes.slice(0, 4).map((cls) => (
+                    <div key={cls.id} className="flex items-center justify-between p-3 rounded-lg hover:bg-cream/50 transition-colors cursor-pointer group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-1.5 h-10 rounded-full bg-accent"></div>
+                        <div>
+                          <p className="font-medium text-navy text-sm group-hover:text-accent transition-colors">{cls.name}</p>
+                          <p className="text-xs text-text-muted">
+                            {cls.student_enrollments?.length || 0} students
+                          </p>
+                        </div>
+                      </div>
+                      <ChevronRight size={14} strokeWidth={2} className="text-text-muted group-hover:text-accent transition-colors" />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

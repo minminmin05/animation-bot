@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { Toaster } from 'sonner'
 import { AuthProvider } from './context/AuthContext'
 import { ProtectedRoute, PublicRoute } from './components/ProtectedRoute'
 import DashboardLayout from './layouts/DashboardLayout'
@@ -7,17 +8,19 @@ import CentralLayout from './layouts/CentralLayout'
 // Auth Pages
 import LoginPage from './pages/auth/LoginPage'
 import SignupPage from './pages/auth/SignupPage'
+import SetupPage from './pages/auth/SetupPage'
 
 // Student Pages
 import StudentDashboard from './pages/student/StudentDashboard'
 import StudentGrades from './pages/student/StudentGrades'
 import StudentSchedule from './pages/student/StudentSchedule'
 import StudentProfile from './pages/student/StudentProfile'
+import StudentReportCard from './pages/student/StudentReportCard'
 
 // Teacher Pages
 import TeacherDashboard from './pages/teacher/TeacherDashboard'
 import TeacherClasses from './pages/teacher/TeacherClasses'
-import TeacherGrades from './pages/teacher/TeacherGrades'
+import TeacherGradesNew from './pages/teacher/TeacherGradesNew'
 import TeacherAssignments from './pages/teacher/TeacherAssignments'
 import TeacherProfile from './pages/teacher/TeacherProfile'
 
@@ -32,13 +35,28 @@ import AdminDashboard from './pages/admin/AdminDashboard'
 import UserManagement from './pages/admin/UserManagement'
 import StudentManagement from './pages/admin/StudentManagement'
 import ClassManagement from './pages/admin/ClassManagement'
+import TeacherManagement from './pages/admin/TeacherManagement'
+import DepartmentManagement from './pages/admin/DepartmentManagement'
+import StudentEnrollment from './pages/admin/StudentEnrollment'
+import AcademicManagement from './pages/admin/AcademicManagement'
+import GradingManagement from './pages/admin/GradingManagement'
+import StudentGradesAdmin from './pages/admin/StudentGradesAdmin'
 
 // Central System Pages
 import CentralDashboard from './pages/central/CentralDashboard'
 
+// AI Pages
+import AIChatAssistant from './pages/admin/AIChatAssistant'
+import KnowledgeBaseManagement from './pages/admin/KnowledgeBaseManagement'
+
+// Settings
+import SystemSettings from './pages/admin/SystemSettings'
+import ErrorBoundary from './components/ErrorBoundary'
+
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-center" richColors closeButton />
       <Router>
         <Routes>
           {/* Public Routes */}
@@ -58,6 +76,7 @@ function App() {
               </PublicRoute>
             }
           />
+          <Route path="/setup" element={<SetupPage />} />
 
           {/* Student Routes */}
           <Route
@@ -71,6 +90,7 @@ function App() {
             <Route path="dashboard" element={<StudentDashboard />} />
             <Route path="grades" element={<StudentGrades />} />
             <Route path="schedule" element={<StudentSchedule />} />
+            <Route path="report-card" element={<StudentReportCard />} />
             <Route path="profile" element={<StudentProfile />} />
             <Route path="" element={<Navigate to="/student/dashboard" replace />} />
           </Route>
@@ -86,7 +106,7 @@ function App() {
           >
             <Route path="dashboard" element={<TeacherDashboard />} />
             <Route path="classes" element={<TeacherClasses />} />
-            <Route path="grades" element={<TeacherGrades />} />
+            <Route path="grades" element={<TeacherGradesNew />} />
             <Route path="assignments" element={<TeacherAssignments />} />
             <Route path="profile" element={<TeacherProfile />} />
             <Route path="" element={<Navigate to="/teacher/dashboard" replace />} />
@@ -122,13 +142,19 @@ function App() {
             <Route path="users" element={<UserManagement />} />
             <Route path="students" element={<StudentManagement />} />
             <Route path="classes" element={<ClassManagement />} />
-            <Route path="teachers" element={<div className="p-6"><h1 className="text-2xl font-bold">Teacher Management - Coming Soon</h1></div>} />
-            <Route path="academic" element={<div className="p-6"><h1 className="text-2xl font-bold">Academic Settings - Coming Soon</h1></div>} />
-            <Route path="grading" element={<div className="p-6"><h1 className="text-2xl font-bold">Grading Settings - Coming Soon</h1></div>} />
-            <Route path="facilities" element={<div className="p-6"><h1 className="text-2xl font-bold">School Facilities - Coming Soon</h1></div>} />
-            <Route path="links" element={<div className="p-6"><h1 className="text-2xl font-bold">System Links - Coming Soon</h1></div>} />
-            <Route path="settings" element={<div className="p-6"><h1 className="text-2xl font-bold">Admin Settings - Coming Soon</h1></div>} />
-            <Route path="system" element={<div className="p-6"><h1 className="text-2xl font-bold">System Settings - Coming Soon</h1></div>} />
+            <Route path="teachers" element={<TeacherManagement />} />
+            <Route path="departments" element={<DepartmentManagement />} />
+            <Route path="enrollment" element={<StudentEnrollment />} />
+            <Route path="academic" element={<AcademicManagement />} />
+            <Route path="grading" element={<GradingManagement />} />
+            <Route path="student-grades" element={<StudentGradesAdmin />} />
+            <Route path="ai-assistant" element={<AIChatAssistant />} />
+            <Route path="knowledge-base" element={<KnowledgeBaseManagement />} />
+            <Route path="settings" element={
+  <ErrorBoundary>
+    <SystemSettings />
+  </ErrorBoundary>
+} />
             <Route path="" element={<Navigate to="/admin/dashboard" replace />} />
           </Route>
 
