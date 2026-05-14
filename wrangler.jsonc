@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "school-management-app",
+  "name": "animation-bot",
   "compatibility_date": "2026-05-14",
   "observability": {
     "enabled": true
