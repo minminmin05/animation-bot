@@ -123,6 +123,11 @@ export class HybridRetrievalService {
       maxTotalTokens = TOKEN_BUDGET
     } = options
 
+    // Pre-compute embedding once to avoid redundant calls
+    const sharedEmbedding = (includeSemanticHistory || includeSummaries || includeRAG) 
+      ? await embed(rewrittenQuery || query) 
+      : null
+
     // Parallel retrieval from all sources
     const [recentMemory, semanticHistory, summaries, ragDocuments] = await Promise.all([
       includeRecentMemory ?
@@ -139,6 +144,7 @@ export class HybridRetrievalService {
         this.semanticMemory.retrieve({
           userId,
           query: rewrittenQuery || query,
+          queryEmbedding: sharedEmbedding || undefined,
           sessionId,
           threshold: semanticThreshold,
           limit: semanticLimit,
@@ -151,12 +157,13 @@ export class HybridRetrievalService {
           userId,
           rewrittenQuery || query,
           0.65,
-          summaryLimit
+          summaryLimit,
+          sharedEmbedding || undefined
         ) :
         Promise.resolve([]),
 
       includeRAG ?
-        this.retrieveRAGDocuments(rewrittenQuery || query, ragLimit) :
+        this.retrieveRAGDocuments(rewrittenQuery || query, ragLimit, sharedEmbedding || undefined) :
         Promise.resolve([])
     ])
 
@@ -195,20 +202,24 @@ export class HybridRetrievalService {
   /**
    * Retrieve RAG documents
    */
-  private async retrieveRAGDocuments(query: string, limit: number): Promise<Array<{
+  private async retrieveRAGDocuments(
+    query: string, 
+    limit: number,
+    queryEmbedding?: number[]
+  ): Promise<Array<{
     content: string
     similarity: number
     category: string
   }>> {
     try {
-      const queryEmbedding = await embed(query)
+      const embedding = queryEmbedding || await embed(query)
 
-      if (!queryEmbedding) {
+      if (!embedding) {
         console.error('[HybridRetrieval] Failed to generate query embedding')
         return []
       }
 
-      const results = await searchByEmbedding(queryEmbedding, limit, 0.7)
+      const results = await searchByEmbedding(embedding, limit, 0.7)
 
       return results.map(doc => ({
         content: doc.content,

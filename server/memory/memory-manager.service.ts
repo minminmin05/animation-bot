@@ -385,9 +385,10 @@ export class MemoryManagerService {
     query: string
     context: string
     memoryContext: MemoryContext
+    userMessageId?: string
   }> {
     // Save user message
-    await this.saveMessage({
+    const userMessageId = await this.saveMessage({
       sessionId,
       userId,
       role: 'user',
@@ -403,7 +404,8 @@ export class MemoryManagerService {
     return {
       query: memoryContext.rewrittenQuery,
       context,
-      memoryContext
+      memoryContext,
+      userMessageId: userMessageId || undefined
     }
   }
 
@@ -455,10 +457,10 @@ export class MemoryManagerService {
     sessionId: string,
     userId: string,
     limit: number = 50
-  ): Promise<Array<{ role: string; content: string; created_at: string }>> {
+  ): Promise<Array<{ id: string; role: string; content: string; created_at: string }>> {
     const { data, error } = await supabase
       .from('chat_messages')
-      .select('role, content, created_at')
+      .select('id, role, content, created_at')
       .eq('session_id', sessionId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
@@ -470,6 +472,66 @@ export class MemoryManagerService {
     }
 
     return (data || []).reverse()
+  }
+
+  /**
+   * Delete a single message and its embeddings
+   */
+  async deleteMessage(messageId: string, userId: string): Promise<boolean> {
+    console.log(`[MemoryManager] Deleting message ${messageId} for user ${userId}`)
+    
+    const { error } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('id', messageId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('[MemoryManager] Error deleting message:', error)
+      return false
+    }
+    
+    // Embeddings are in the same row, so they're deleted automatically
+    return true
+  }
+
+  /**
+   * Delete entire session and all associated memory
+   */
+  async deleteSession(sessionId: string, userId: string): Promise<boolean> {
+    console.log(`[MemoryManager] Deleting session ${sessionId} for user ${userId}`)
+    
+    // 1. Delete messages (and their embeddings)
+    const { error: msgError } = await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      
+    if (msgError) console.error('[MemoryManager] Error deleting session messages:', msgError)
+
+    // 2. Delete summaries (and their embeddings)
+    const { error: sumError } = await supabase
+      .from('session_summaries')
+      .delete()
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+      
+    if (sumError) console.error('[MemoryManager] Error deleting session summaries:', sumError)
+
+    // 3. Delete session record itself
+    const { error: sessionError } = await supabase
+      .from('chat_sessions')
+      .delete()
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+
+    if (sessionError) {
+      console.error('[MemoryManager] Error deleting session record:', sessionError)
+      return false
+    }
+
+    return true
   }
 
   // ============================================================

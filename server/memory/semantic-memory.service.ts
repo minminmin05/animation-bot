@@ -15,6 +15,7 @@ import { embed } from '../embeddings/index.js'
 export interface SemanticMemoryOptions {
   userId: string
   query: string
+  queryEmbedding?: number[]
   sessionId?: string // Current session (to exclude from search)
   threshold?: number
   limit?: number
@@ -164,6 +165,7 @@ export class SemanticMemoryService {
     const {
       userId,
       query,
+      queryEmbedding: providedEmbedding,
       sessionId,
       threshold = DEFAULT_THRESHOLD,
       limit = DEFAULT_LIMIT,
@@ -171,8 +173,8 @@ export class SemanticMemoryService {
     } = options
 
     try {
-      // Generate embedding for query
-      const queryEmbedding = await embed(query)
+      // Generate embedding for query if not provided
+      const queryEmbedding = providedEmbedding || await embed(query)
 
       if (!queryEmbedding) {
         console.error('[SemanticMemory] Failed to generate query embedding')
