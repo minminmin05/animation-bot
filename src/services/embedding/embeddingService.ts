@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'
 
 export async function embedAndStore(
   text: string,
@@ -49,12 +49,16 @@ export interface UserContext {
   userId?: string
   userRole?: 'student' | 'teacher' | 'parent' | 'admin'
   sessionId?: string
+  token?: string
 }
 
 export async function askAI(question: string, userContext?: UserContext): Promise<AIResponse> {
   const response = await fetch(`${API_BASE}/api/memory/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...(userContext?.token ? { 'Authorization': `Bearer ${userContext.token}` } : {})
+    },
     body: JSON.stringify({
       query: question,
       userId: userContext?.userId,
@@ -76,16 +80,22 @@ export async function askAI(question: string, userContext?: UserContext): Promis
     emotion: data.response.emotion,
     tts: data.response.tts,
     sources: data.context || [],
-    sessionId: data.sessionId // Expose sessionId back to frontend
-  } as AIResponse & { sessionId?: string }
+    sessionId: data.sessionId,
+    messageId: data.messageId,
+    userMessageId: data.userMessageId
+  } as AIResponse & { sessionId?: string; messageId?: string; userMessageId?: string }
 }
 
-export async function getChatHistory(sessionId: string, userId?: string) {
+export async function getChatHistory(sessionId: string, userId?: string, token?: string) {
   const url = new URL(`${API_BASE}/api/memory/sessions/${sessionId}`);
   if (userId) {
     url.searchParams.append('userId', userId);
   }
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), {
+    headers: {
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    }
+  });
   if (!response.ok) throw new Error('Failed to get chat history');
   return response.json();
 }

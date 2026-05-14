@@ -4,22 +4,21 @@
  * REST API endpoints for the memory system.
  */
 
-import { Router, Request, Response } from 'express'
+import { Router, Response } from 'express'
 import { getConversationalPipelineService, ConversationalRequest } from '../memory/index.js'
+import { authenticate, AuthenticatedRequest } from '../security/auth.middleware.js'
 
 const router = Router()
 const pipeline = getConversationalPipelineService()
+
+// Apply authentication middleware to all routes in this router
+router.use(authenticate)
 
 // ============================================================
 // TYPES
 // ============================================================
 
-interface AuthenticatedRequest extends Request {
-  user?: {
-    id: string
-    role?: string
-  }
-}
+// Types moved to auth.middleware.ts
 
 // ============================================================
 // ENDPOINTS
@@ -31,16 +30,14 @@ interface AuthenticatedRequest extends Request {
  */
 router.post('/chat', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { query, sessionId, userRole } = req.body
+    const { query, sessionId } = req.body
 
     if (!query) {
       return res.status(400).json({ error: 'Query is required' })
     }
 
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
+    const userRole = req.user!.role || 'student'
 
     const request: ConversationalRequest = {
       query,
@@ -60,7 +57,8 @@ router.post('/chat', async (req: AuthenticatedRequest, res: Response) => {
       },
       context: response.context,
       sessionId: response.sessionId,
-      messageId: response.messageId
+      messageId: response.messageId,
+      userMessageId: response.userMessageId
     })
   } catch (error) {
     console.error('[MemoryAPI] Chat error:', error)
@@ -77,10 +75,7 @@ router.post('/chat', async (req: AuthenticatedRequest, res: Response) => {
  */
 router.get('/sessions', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const limit = parseInt(req.query.limit as string) || 20
     const sessions = await pipeline.getSessions(userId, limit)
@@ -98,10 +93,7 @@ router.get('/sessions', async (req: AuthenticatedRequest, res: Response) => {
  */
 router.get('/sessions/:sessionId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const { sessionId } = req.params
     const limit = parseInt(req.query.limit as string) || 50
@@ -117,26 +109,51 @@ router.get('/sessions/:sessionId', async (req: AuthenticatedRequest, res: Respon
 
 /**
  * DELETE /api/memory/sessions/:sessionId
- * Clear session history
+ * Delete entire session, messages, and vector memory
  */
 router.delete('/sessions/:sessionId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const { sessionId } = req.params
-    const success = await pipeline.clearSession(sessionId, userId)
+    const { getMemoryManagerService } = await import('../memory/index.js')
+    const memoryManager = getMemoryManagerService()
+
+    const success = await memoryManager.deleteSession(sessionId, userId)
 
     if (success) {
-      res.json({ success: true, message: 'Session cleared' })
+      res.json({ success: true, message: 'Session deleted' })
     } else {
-      res.status(500).json({ error: 'Failed to clear session' })
+      res.status(500).json({ error: 'Failed to delete session' })
     }
   } catch (error) {
-    console.error('[MemoryAPI] Clear error:', error)
-    res.status(500).json({ error: 'Failed to clear session' })
+    console.error('[MemoryAPI] Delete session error:', error)
+    res.status(500).json({ error: 'Failed to delete session' })
+  }
+})
+
+/**
+ * DELETE /api/memory/messages/:messageId
+ * Delete a single message from history and memory
+ */
+router.delete('/messages/:messageId', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id
+
+    const { messageId } = req.params
+    const { getMemoryManagerService } = await import('../memory/index.js')
+    const memoryManager = getMemoryManagerService()
+
+    const success = await memoryManager.deleteMessage(messageId, userId)
+
+    if (success) {
+      res.json({ success: true, message: 'Message deleted' })
+    } else {
+      res.status(500).json({ error: 'Failed to delete message' })
+    }
+  } catch (error) {
+    console.error('[MemoryAPI] Delete message error:', error)
+    res.status(500).json({ error: 'Failed to delete message' })
   }
 })
 
@@ -146,10 +163,7 @@ router.delete('/sessions/:sessionId', async (req: AuthenticatedRequest, res: Res
  */
 router.get('/sessions/:sessionId/export', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const { sessionId } = req.params
     const data = await pipeline.exportSession(sessionId, userId)
@@ -171,10 +185,7 @@ router.get('/sessions/:sessionId/export', async (req: AuthenticatedRequest, res:
  */
 router.post('/search', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const { query } = req.body
     if (!query) {
@@ -197,10 +208,7 @@ router.post('/search', async (req: AuthenticatedRequest, res: Response) => {
  */
 router.post('/sessions', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const { title } = req.body
 
@@ -226,10 +234,7 @@ router.post('/sessions', async (req: AuthenticatedRequest, res: Response) => {
  */
 router.patch('/sessions/:sessionId', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const { sessionId } = req.params
     const { title } = req.body
@@ -260,10 +265,7 @@ router.patch('/sessions/:sessionId', async (req: AuthenticatedRequest, res: Resp
  */
 router.get('/stats', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const userId = req.body.userId || req.query.userId || req.headers['x-user-id'] as string || req.user?.id
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+    const userId = req.user!.id
 
     const stats = await pipeline.getUserStats(userId)
 

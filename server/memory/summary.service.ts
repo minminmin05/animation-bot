@@ -372,17 +372,18 @@ ${options.includeUserGoals ? '- เป้าหมายของผู้ใช
     userId: string,
     query: string,
     threshold: number = 0.65,
-    limit: number = 3
+    limit: number = 3,
+    queryEmbedding?: number[]
   ): Promise<SessionSummary[]> {
     try {
-      const queryEmbedding = await embed(query)
+      const embedding = queryEmbedding || await embed(query)
 
-      if (!queryEmbedding) return []
+      if (!embedding) return []
 
       const { data, error } = await supabase
         .rpc('match_session_summaries', {
           user_id_param: userId,
-          query_embedding: queryEmbedding,
+          query_embedding: embedding,
           match_threshold: threshold,
           match_count: limit
         })

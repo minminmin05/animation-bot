@@ -59,7 +59,10 @@ const ABBREVIATION_EXPANSIONS = {
     'ม.': 'มัธยม',
     'ป.': 'ประถม',
     'วิทย์': 'วิทยาศาสตร์',
-    'คณิต': 'คณิตศาสตร์'
+    'คณิต': 'คณิตศาสตร์',
+    'รร.': 'โรงเรียน',
+    'ผอ.': 'ผู้อำนวยการ',
+    'นร.': 'นักเรียน'
   },
   english: {
     'math': 'mathematics',
@@ -142,15 +145,31 @@ export class QueryRewriterService {
     }
 
     // Step 5: Abbreviation expansion
-    const expanded = this.expandAbbreviations(rewrittenQuery)
-    if (expanded !== rewrittenQuery) {
-      rewrittenQuery = expanded
-      changes.push('Expanded abbreviations')
+    const expandedResult = this.expandAbbreviations(rewrittenQuery)
+    if (expandedResult.expanded !== rewrittenQuery) {
+      rewrittenQuery = expandedResult.expanded
+      changes.push(...expandedResult.changes)
       needsRewrite = true
+    }
+
+    // Step 6: Validation and Fallback
+    // If the rewrite is too drastic or seems to have corrupted the text, fallback
+    const isFallbackNeeded = this.shouldFallback(query, rewrittenQuery, changes)
+    if (isFallbackNeeded && needsRewrite) {
+      console.log('[QueryRewriter] Rewrite validation failed, falling back to original query')
+      return this.noRewriteResult(query)
     }
 
     // Calculate confidence based on changes
     const confidence = this.calculateConfidence(query, rewrittenQuery, changes.length)
+
+    // Log the rewrite details as requested
+    console.log('[QueryRewriter] Query Rewrite Debug:')
+    console.log(`  - Original: "${query}"`)
+    console.log(`  - Rewritten: "${rewrittenQuery}"`)
+    console.log(`  - Changes: ${changes.join(', ') || 'None'}`)
+    console.log(`  - Reason: ${needsRewrite ? 'Context resolution/Expansion' : 'No rewrite needed'}`)
+    console.log(`  - Confidence: ${confidence.toFixed(2)}`)
 
     return {
       originalQuery: query,
@@ -160,6 +179,28 @@ export class QueryRewriterService {
       confidence,
       needsRewrite
     }
+  }
+
+  /**
+   * Determine if we should fallback to the original query
+   */
+  private shouldFallback(original: string, rewritten: string, changes: string[]): boolean {
+    // 1. If length changed too drastically without clear reason
+    if (rewritten.length > original.length * 3 && !changes.includes('Added session context')) {
+      return true
+    }
+
+    // 2. Check for obvious Thai corruption (e.g. "สามัธยมรถ")
+    // This is hard to detect perfectly, but we can check if certain common words are broken
+    const corruptionPatterns = [/สามัธยมรถ/, /รหัสัธยมผ่าน/]
+    for (const pattern of corruptionPatterns) {
+      if (pattern.test(rewritten)) return true
+    }
+
+    // 3. Simple heuristic: if rewrite is empty or too short
+    if (!rewritten || rewritten.trim().length < 2) return true
+
+    return false
   }
 
   /**
@@ -379,26 +420,44 @@ Rewritten query:`
   /**
    * Expand abbreviations in query
    */
-  private expandAbbreviations(query: string): string {
+  private expandAbbreviations(query: string): { expanded: string, changes: string[] } {
     let result = query
+    const changes: string[] = []
 
-    // Thai abbreviations
+    // Thai abbreviations - SAFE dictionary-based replacement
     for (const [abbr, full] of Object.entries(ABBREVIATION_EXPANSIONS.thai)) {
-      const pattern = new RegExp(abbr, 'g')
+      // Escape special characters in abbreviation (like the dot)
+      const escapedAbbr = abbr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      
+      // For Thai, we want to match:
+      // 1. The abbreviation followed by a space, digit, or end of string
+      // 2. The abbreviation preceded by a space or start of string
+      // Since Thai doesn't have spaces, we focus on the dot which usually indicates the end of abbreviation
+      // OR we look for the abbreviation as a stand-alone token (if we had a tokenizer)
+      
+      // IMPROVED regex: only replace if followed by space, digit, or certain punctuation, 
+      // or if it ends with a dot and is not part of another word.
+      const pattern = new RegExp(`(?<![ก-ฮ])${escapedAbbr}(?![ก-ฮ])`, 'g')
+      
       if (pattern.test(result)) {
-        result = result.replace(pattern, full)
+        const matches = result.match(pattern)
+        if (matches) {
+          result = result.replace(pattern, full)
+          changes.push(`Expanded "${abbr}" to "${full}"`)
+        }
       }
     }
 
-    // English abbreviations
+    // English abbreviations - Safe word boundary replacement
     for (const [abbr, full] of Object.entries(ABBREVIATION_EXPANSIONS.english)) {
       const pattern = new RegExp(`\\b${abbr}\\b`, 'gi')
       if (pattern.test(result)) {
         result = result.replace(pattern, full)
+        changes.push(`Expanded "${abbr}" to "${full}"`)
       }
     }
 
-    return result
+    return { expanded: result, changes }
   }
 
   /**

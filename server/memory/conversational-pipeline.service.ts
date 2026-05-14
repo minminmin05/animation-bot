@@ -35,6 +35,7 @@ export interface ConversationalResponse {
     tokensUsed: number
   }
   messageId: string
+  userMessageId?: string
   sessionId: string
 }
 
@@ -134,7 +135,8 @@ export class ConversationalPipelineService {
     return {
       response,
       context,
-      messageId,
+      messageId: messageId || '',
+      userMessageId: queryResult.userMessageId,
       sessionId: session.id
     }
   }
@@ -274,10 +276,11 @@ export class ConversationalPipelineService {
     sessionId: string,
     userId: string,
     limit: number = 50
-  ): Promise<Array<{ role: string; content: string; timestamp: string }>> {
+  ): Promise<Array<{ id: string; role: string; content: string; timestamp: string }>> {
     const messages = await this.memoryManager.getSessionMessages(sessionId, userId, limit)
 
     return messages.map(m => ({
+      id: m.id,
       role: m.role,
       content: m.content,
       timestamp: m.created_at
